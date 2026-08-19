@@ -218,6 +218,20 @@ textarea{resize:none;min-height:110px;line-height:1.8}
   border-radius:50%;animation:sp .7s linear infinite;display:inline-block;vertical-align:-4px;margin-right:8px}
 @keyframes sp{to{transform:rotate(360deg)}}
 .err{font-size:13px;color:var(--red);margin-top:12px;line-height:1.6}
+.pinrow{display:flex;gap:10px;justify-content:center;margin:6px 0 14px}
+.pindot{width:14px;height:14px;border-radius:50%;border:1.5px solid var(--border);transition:all .18s}
+.pindot.on{background:var(--accent);border-color:var(--accent);box-shadow:0 0 12px rgba(123,92,255,.6)}
+.pindot.bad{background:var(--red);border-color:var(--red);box-shadow:none}
+.pinin{position:absolute;opacity:0;pointer-events:none;width:1px;height:1px}
+.pinbox{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-card);
+  padding:22px 18px;margin-bottom:16px;cursor:text;text-align:center}
+.pinbox label{margin-bottom:14px}
+.tiny{font-size:11.5px;color:var(--muted);text-align:center;line-height:1.6;margin-top:10px}
+.store{display:inline-flex;align-items:center;gap:6px;font-size:10.5px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--muted);background:var(--surface2);border:1px solid var(--border);
+  border-radius:999px;padding:4px 11px;margin:0 auto 18px}
+.store b{color:var(--green);font-weight:700}
+.store.weak b{color:var(--gold)}
 .crash{position:fixed;left:8px;right:8px;bottom:8px;z-index:9999;display:none;
   background:rgba(255,107,107,.14);border:1px solid var(--red);border-radius:12px;
   padding:12px 14px;font-family:ui-monospace,monospace;font-size:11px;color:#FFD9D9;
@@ -262,7 +276,7 @@ textarea{resize:none;min-height:110px;line-height:1.8}
     <div class="dots"><i class="dot on"></i><i class="dot"></i><i class="dot"></i></div>
   </div>
   <h1>Set up your wallet</h1>
-  <p class="lede">Pick a phrase length, then a passphrase that encrypts the keys on this device.</p>
+  <p class="lede">Pick a phrase length, then a PIN. The keys are encrypted with it and kept in your phone's secure storage, never on a server.</p>
 
   <label>Recovery phrase length</label>
   <div class="seg" id="seg">
@@ -271,21 +285,22 @@ textarea{resize:none;min-height:110px;line-height:1.8}
   </div>
   <p class="lede" style="margin-top:-8px;font-size:12.5px" id="len-note">12 words is 128 bits of entropy. Nothing will brute force that, and it is far easier to write down without a mistake.</p>
 
-  <div class="field">
-    <label>Passphrase</label>
-    <input type="password" id="p1" autocomplete="new-password" placeholder="At least 12 characters">
-    <div class="meter"><i id="mfill"></i></div>
-    <div class="meter-txt" id="mtxt"></div>
+  <div class="pinbox" id="pinbox1">
+    <label>Choose a 6 digit PIN</label>
+    <div class="pinrow" id="pinrow1"></div>
+    <input class="pinin" id="p1" type="tel" inputmode="numeric" maxlength="6" autocomplete="off">
+    <div class="meter-txt" id="mtxt" style="min-height:0"></div>
   </div>
-  <div class="field">
+  <div class="pinbox" id="pinbox2">
     <label>Repeat it</label>
-    <input type="password" id="p2" autocomplete="new-password">
-    <div class="meter-txt" id="mmatch"></div>
+    <div class="pinrow" id="pinrow2"></div>
+    <input class="pinin" id="p2" type="tel" inputmode="numeric" maxlength="6" autocomplete="off">
+    <div class="meter-txt" id="mmatch" style="min-height:0"></div>
   </div>
 
   <div class="warn red">
     <svg viewBox="0 0 24 24"><path d="M12 9v4m0 4h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
-    <p><b>There is no reset.</b> If you forget this passphrase, the recovery phrase on the next screen is the only way back in.</p>
+    <p><b>There is no reset.</b> If you forget this PIN or lose the phone, the recovery phrase on the next screen is the only way back in.</p>
   </div>
 
   <div class="grow"></div>
@@ -366,8 +381,8 @@ textarea{resize:none;min-height:110px;line-height:1.8}
     <p>Never enter a phrase somebody gave you. <b>A phrase you did not create is a trap</b>, and whatever you send there will be taken.</p>
   </div>
   <div class="field">
-    <label>Passphrase for this device</label>
-    <input type="password" id="ip1" autocomplete="new-password" placeholder="At least 12 characters">
+    <label>PIN for this device</label>
+    <input type="tel" inputmode="numeric" maxlength="6" id="ip1" autocomplete="off" placeholder="6 digits">
   </div>
   <div class="grow"></div>
   <button class="btn solid" id="btn-import" disabled>Restore</button>
@@ -411,6 +426,37 @@ textarea{resize:none;min-height:110px;line-height:1.8}
 </section>
 
 <!-- ================= DONE ================= -->
+<!-- ================= UNLOCK ================= -->
+<section class="step" id="st-unlock">
+  <div class="grow" style="display:flex;flex-direction:column;justify-content:center">
+    <h1 style="text-align:center">Welcome back</h1>
+    <p class="lede" style="text-align:center" id="unlock-addr">...</p>
+    <div class="pinbox" id="pinboxU">
+      <label>Enter your PIN</label>
+      <div class="pinrow" id="pinrowU"></div>
+      <input class="pinin" id="pu" type="tel" inputmode="numeric" maxlength="6" autocomplete="off">
+      <div class="meter-txt" id="umsg" style="min-height:0"></div>
+    </div>
+  </div>
+  <button class="btn quiet" id="btn-forget">Forget this wallet</button>
+</section>
+
+<!-- ================= HOME (placeholder) ================= -->
+<section class="step" id="st-home">
+  <div class="bar"><div class="dots"></div></div>
+  <h1>Wallet unlocked</h1>
+  <p class="lede">The balance, send and staking screens are not wired into this build yet. What works is the part underneath: the key is decrypted in memory and never leaves the device.</p>
+  <div class="store" id="store-kind">stored in <b>...</b></div>
+  <div class="addr">
+    <label>Your address</label>
+    <code id="home-addr">...</code>
+  </div>
+  <p class="tiny" id="home-note"></p>
+  <div class="grow"></div>
+  <button class="btn" id="btn-lock">Lock</button>
+  <button class="btn quiet" id="btn-reset">Delete wallet from this device</button>
+</section>
+
 <section class="step" id="st-done">
   <div class="bar"><div class="dots"></div></div>
   <h1>Wallet ready</h1>
@@ -524,18 +570,34 @@ function strength(p){
   if (bits < 80)      return { score:75,  txt:'Good - about ' + bits + ' bits' };
   return                     { score:100, txt:'Strong - about ' + bits + ' bits' };
 }
-function checkPass(){
-  const a = $('#p1').value, b = $('#p2').value, s = strength(a);
-  $('#mfill').style.width = s.score + '%';
-  $('#mfill').style.background = s.score <= 25 ? 'var(--red)' : s.score <= 50 ? 'var(--gold)' : 'var(--green)';
-  $('#mtxt').textContent = s.txt;
-  const match = a.length > 0 && a === b;
-  $('#mmatch').textContent = b.length === 0 ? '' : (match ? '' : 'The two do not match');
-  $('#mmatch').style.color = 'var(--red)';
-  $('#btn-setup').disabled = !(a.length >= 12 && match);
+function dots(rowId, n, bad){
+  const row = $('#' + rowId);
+  row.innerHTML = '';
+  for (let i = 0; i < 6; i++){
+    const d = document.createElement('span');
+    d.className = 'pindot' + (i < n ? ' on' : '') + (bad ? ' bad' : '');
+    row.appendChild(d);
+  }
 }
-$('#p1').addEventListener('input', checkPass);
-$('#p2').addEventListener('input', checkPass);
+function digitsOnly(el){ el.value = el.value.replace(/\D/g, '').slice(0, 6); return el.value; }
+
+function checkPass(){
+  const a = digitsOnly($('#p1')), b = digitsOnly($('#p2'));
+  dots('pinrow1', a.length); dots('pinrow2', b.length);
+  const weak = a.length === 6 && (/^(\d)\1{5}$/.test(a) || '0123456789'.includes(a) || '9876543210'.includes(a));
+  $('#mtxt').textContent = weak ? 'Too easy to guess, pick another' : '';
+  $('#mtxt').style.color = 'var(--gold)';
+  const match = a.length === 6 && a === b;
+  $('#mmatch').textContent = (b.length === 6 && !match) ? 'The two do not match' : '';
+  $('#mmatch').style.color = 'var(--red)';
+  $('#btn-setup').disabled = !(match && !weak);
+}
+['p1','p2'].forEach(id => {
+  $('#' + id).addEventListener('input', checkPass);
+  $('#pinbox' + (id === 'p1' ? '1' : '2')).addEventListener('click', () => $('#' + id).focus());
+});
+dots('pinrow1', 0); dots('pinrow2', 0);
+$('#ip1').addEventListener('input', () => digitsOnly($('#ip1')));
 
 /* ---------------- generate ---------------- */
 $('#btn-setup').addEventListener('click', async () => {
@@ -761,7 +823,11 @@ async function finish(mnemonic){
   $('#blob-out').textContent = JSON.stringify(blob);
   $('#kdf-note').textContent = 'Key derivation took ' + ms + ' ms here with ' +
     ITER.toLocaleString() + ' PBKDF2 iterations. That delay repeats on every unlock, so pick the number against the slowest phone you care about, not this one.';
-  go('done');
+  await saveWallet(addr, blob);
+  $('#home-addr').textContent = addr;
+  $('#home-note').textContent =
+    'PIN check took ' + ms + ' ms on this device. That delay repeats on every unlock.';
+  go('home');
 }
 
 $('#btn-verify').addEventListener('click', async () => {
@@ -772,12 +838,129 @@ $('#btn-verify').addEventListener('click', async () => {
   finally { b.innerHTML = 'Create wallet'; }
 });
 
+/* ---------------- storage ----------------
+   SecureStorage is backed by the iOS Keychain and the Android Keystore,
+   so the encrypted key never reaches a server. The cost is that it is
+   DEVICE LOCAL: a new phone or a reinstall means the recovery phrase is
+   the only way back. That is why the backup step is not optional.
+------------------------------------------- */
+const KEY = 'frontier_wallet_v1';
+const Store = (() => {
+  let mem = null, kind = 'memory', api = null;
+  if (tg && tg.SecureStorage && tg.isVersionAtLeast && tg.isVersionAtLeast('8.0')) {
+    kind = 'secure'; api = tg.SecureStorage;
+  } else if (tg && tg.CloudStorage) {
+    kind = 'cloud'; api = tg.CloudStorage;
+  }
+  const call = (fn, ...args) => new Promise((res, rej) => {
+    try { fn.call(api, ...args, (err, val) => err ? rej(err) : res(val)); }
+    catch (e) { rej(e); }
+  });
+  return {
+    get kind(){ return kind; },
+    async save(v){ if (!api) { mem = v; return; } await call(api.setItem, KEY, v); },
+    async load(){
+      if (!api) return mem;
+      try { return await call(api.getItem, KEY); } catch (e) { return null; }
+    },
+    async clear(){ if (!api) { mem = null; return; } try { await call(api.removeItem, KEY); } catch (e) {} }
+  };
+})();
+
+const short = a => a.slice(0, 11) + '\u2026' + a.slice(-6);
+
+async function saveWallet(addr, blob){
+  try { await Store.save(JSON.stringify({ addr, blob })); }
+  catch (e) { report('save', e); }
+  const el = $('#store-kind');
+  const label = Store.kind === 'secure' ? 'device keychain'
+              : Store.kind === 'cloud'  ? 'telegram cloud'
+              : 'memory only';
+  el.innerHTML = 'stored in <b>' + label + '</b>';
+  el.classList.toggle('weak', Store.kind !== 'secure');
+}
+
+async function decryptSeed(blob, pin){
+  const u8 = b => Uint8Array.from(atob(b), c => c.charCodeAt(0));
+  const enc = new TextEncoder();
+  const km  = await crypto.subtle.importKey('raw', enc.encode(pin), 'PBKDF2', false, ['deriveKey']);
+  const key = await crypto.subtle.deriveKey(
+    { name:'PBKDF2', salt:u8(blob.salt), iterations:blob.iter, hash:'SHA-256' },
+    km, { name:'AES-GCM', length:256 }, false, ['decrypt']);
+  const pt = await crypto.subtle.decrypt({ name:'AES-GCM', iv:u8(blob.iv) }, key, u8(blob.ct));
+  return new TextDecoder().decode(pt);
+}
+
+/* ---------------- unlock ---------------- */
+let SAVED = null, tries = 0;
+
+$('#pinboxU').addEventListener('click', () => $('#pu').focus());
+$('#pu').addEventListener('input', async () => {
+  const v = digitsOnly($('#pu'));
+  dots('pinrowU', v.length);
+  $('#umsg').textContent = '';
+  if (v.length < 6) return;
+
+  $('#umsg').textContent = 'Checking';
+  $('#umsg').style.color = 'var(--muted)';
+  try {
+    await libs();
+    MNEMONIC = await decryptSeed(SAVED.blob, v);
+    PASS = v; tries = 0;
+    $('#home-addr').textContent = SAVED.addr;
+    $('#home-note').textContent = '';
+    saveWallet(SAVED.addr, SAVED.blob);
+    go('home');
+  } catch (e) {
+    tries++;
+    dots('pinrowU', 6, true);
+    buzz('error');
+    $('#umsg').textContent = 'Wrong PIN' + (tries > 2 ? ', ' + tries + ' attempts' : '');
+    $('#umsg').style.color = 'var(--red)';
+    setTimeout(() => { $('#pu').value = ''; dots('pinrowU', 0); }, 550);
+  }
+});
+
+$('#btn-lock').addEventListener('click', () => {
+  MNEMONIC = null; PASS = null;
+  $('#pu').value = ''; dots('pinrowU', 0); $('#umsg').textContent = '';
+  go('unlock');
+  $('#pu').focus();
+});
+
+$('#btn-reset').addEventListener('click', async () => {
+  if (!confirm('Delete the wallet from this device? Only the recovery phrase can bring it back.')) return;
+  await Store.clear();
+  MNEMONIC = null; PASS = null; SAVED = null;
+  go('welcome');
+});
+
+$('#btn-forget').addEventListener('click', async () => {
+  if (!confirm('Forget this wallet? Only the recovery phrase can bring it back.')) return;
+  await Store.clear();
+  SAVED = null;
+  go('welcome');
+});
+
+/* ---------------- boot ---------------- */
+(async function boot(){
+  try {
+    const raw = await Store.load();
+    if (!raw) return;
+    SAVED = JSON.parse(raw);
+    $('#unlock-addr').textContent = short(SAVED.addr);
+    $('#st-welcome').classList.remove('on', 'intro');
+    $('#st-unlock').classList.add('on');
+    dots('pinrowU', 0);
+  } catch (e) { report('boot', e); }
+})();
+
 /* ---------------- import ---------------- */
 async function checkImport(){
   const v = $('#imp').value.trim().toLowerCase().replace(/\s+/g,' ');
   const n = v ? v.split(' ').length : 0;
   const t = $('#imptxt');
-  const passOk = $('#ip1').value.length >= 12;
+  const passOk = /^\d{6}$/.test($('#ip1').value);
   if (!n) { t.textContent = ''; $('#btn-import').disabled = true; return; }
   if (n !== 12 && n !== 24) {
     t.textContent = n + ' words, needs 12 or 24';
@@ -832,7 +1015,7 @@ $('#btn-import').addEventListener('click', async () => {
     MNEMONIC = $('#imp').value.trim().toLowerCase().replace(/\s+/g,' ');
     PASS = $('#ip1').value;
     if (!bip39.validateMnemonic(MNEMONIC, bip39.wordlist)) throw new Error('checksum');
-    if (PASS.length < 12) throw new Error('passphrase too short');
+    if (PASS.length !== 6) throw new Error('PIN must be 6 digits');
     await finish(MNEMONIC);
     b.innerHTML = 'Restore';                 // only reset on the way out
   } catch (e) {
