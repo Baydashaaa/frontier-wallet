@@ -42,6 +42,8 @@ h1{font-family:'Rajdhani',sans-serif;font-weight:700;font-size:27px;color:#fff;
 .grow{flex:1;min-height:12px}
 
 /* ---- logo + intro ---- */
+.logo{position:relative;width:100%;max-width:290px;aspect-ratio:1200/431;margin:0 auto 16px}
+.ltr,.rift{position:absolute;display:block}
 .logowrap{position:relative;width:148px;height:148px;margin:0 auto 24px}
 .logowrap::before{content:'';position:absolute;inset:-32%;border-radius:50%;pointer-events:none;
   background:radial-gradient(circle,rgba(123,92,255,.42) 0%,rgba(123,92,255,.16) 42%,rgba(123,92,255,0) 70%)}
@@ -54,12 +56,31 @@ h1{font-family:'Rajdhani',sans-serif;font-weight:700;font-size:27px;color:#fff;
 
 /* played once on first launch, skipped afterwards */
 .intro #spark{animation:spark .45s ease-out .15s both}
+.intro .ltr{animation:pop .8s cubic-bezier(.2,.9,.3,1) both}
+.intro .ltr:nth-child(1){animation-delay:.55s}
+.intro .ltr:nth-child(2){animation-delay:.08s}
+.intro .ltr:nth-child(3){animation-delay:.86s}
+.intro .ltr:nth-child(4){animation-delay:1.16s}
+.intro .ltr:nth-child(6){animation-delay:.36s}
+.intro .ltr:nth-child(7){animation-delay:1.01s}
+.intro .ltr:nth-child(8){animation-delay:.22s}
+.intro .ltr:nth-child(9){animation-delay:.71s}
+.intro .rift{animation:rift 1.15s ease-out 1.65s both}
+@keyframes pop{
+  from{opacity:0;transform:translateY(9px) scale(.86)}
+  to{opacity:1;transform:none}
+}
+@keyframes rift{
+  0%{opacity:0;clip-path:inset(50% 0 50% 0);filter:brightness(2.4)}
+  55%{opacity:1;clip-path:inset(0 0 0 0);filter:brightness(2.4)}
+  100%{opacity:1;clip-path:inset(0 0 0 0);filter:brightness(1)}
+}
 .intro #star{animation:star .55s cubic-bezier(.2,.9,.25,1) .5s both}
 .intro #ring{animation:ring .65s ease-out .9s both}
 .intro .wordmark{animation:rise .45s ease-out 1.3s both}
-.intro .tagline{animation:rise .45s ease-out 1.45s both}
-.intro .lede{animation:rise .45s ease-out 1.55s both}
-.intro .btns{animation:rise .5s ease-out 1.65s both}
+.intro .tagline{animation:rise .6s ease-out 2.55s both}
+.intro .lede{animation:rise .6s ease-out 2.72s both}
+.intro .btns{animation:rise .65s ease-out 2.9s both}
 
 @keyframes spark{
   0%{opacity:0;transform:scale(.2)}
@@ -207,54 +228,18 @@ textarea{resize:none;min-height:110px;line-height:1.8}
 <section class="step on intro" id="st-welcome">
   <div class="grow" style="display:flex;flex-direction:column;justify-content:center">
 
-    <div class="logowrap">
-    <svg class="logo" viewBox="0 0 200 200" aria-label="Frontier">
-      <defs>
-        <linearGradient id="lz" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%"  stop-color="#E3D4FF"/>
-          <stop offset="55%" stop-color="#A98BFF"/>
-          <stop offset="100%" stop-color="#7B5CFF"/>
-        </linearGradient>
-        <linearGradient id="dk" x1="1" y1="0" x2="0" y2="1">
-          <stop offset="0%"  stop-color="#7B5CFF"/>
-          <stop offset="60%" stop-color="#5B34E0"/>
-          <stop offset="100%" stop-color="#3B1FCC"/>
-        </linearGradient>
-        <linearGradient id="rg" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%"  stop-color="#C9B4FF"/>
-          <stop offset="50%" stop-color="#7B5CFF"/>
-          <stop offset="100%" stop-color="#4526C9"/>
-        </linearGradient>
-        <radialGradient id="sp">
-          <stop offset="0%"   stop-color="#fff"/>
-          <stop offset="45%"  stop-color="#C9B4FF"/>
-          <stop offset="100%" stop-color="#7B5CFF" stop-opacity="0"/>
-        </radialGradient>
-      </defs>
-
-      <!-- broken ring: four arcs, gaps on the diagonals -->
-      <circle id="ring" cx="100" cy="100" r="88" fill="none" stroke="url(#rg)"
-              stroke-width="7" stroke-linecap="round"
-              stroke-dasharray="108 30" transform="rotate(-45 100 100)"/>
-
-      <!-- faceted four point star: two triangles per arm -->
-      <g id="star">
-        <path fill="url(#lz)" d="M100 16 82 82 100 100Z"/>
-        <path fill="url(#dk)" d="M100 16 118 82 100 100Z"/>
-        <path fill="url(#dk)" d="M184 100 118 82 100 100Z"/>
-        <path fill="url(#lz)" d="M184 100 118 118 100 100Z"/>
-        <path fill="url(#lz)" d="M100 184 118 118 100 100Z"/>
-        <path fill="url(#dk)" d="M100 184 82 118 100 100Z"/>
-        <path fill="url(#dk)" d="M16 100 82 118 100 100Z"/>
-        <path fill="url(#lz)" d="M16 100 82 82 100 100Z"/>
-      </g>
-
-      <circle id="spark" cx="100" cy="100" r="26" fill="url(#sp)"/>
-    </svg>
+    <div class="logo" role="img" aria-label="Frontier">
+      <img class="ltr" src="assets/letters/F.png" alt="" style="left:0.0%;top:37.82%;width:8.17%;height:23.43%">
+      <img class="ltr" src="assets/letters/R.png" alt="" style="left:12.5%;top:38.05%;width:8.83%;height:23.67%">
+      <img class="ltr" src="assets/letters/O.png" alt="" style="left:25.92%;top:38.05%;width:8.75%;height:23.67%">
+      <img class="ltr" src="assets/letters/N.png" alt="" style="left:39.33%;top:37.82%;width:8.67%;height:23.9%">
+      <img class="rift" src="assets/letters/spike.png" alt="" style="left:50.92%;top:0.0%;width:3.42%;height:100.0%">
+      <img class="ltr" src="assets/letters/T.png" alt="" style="left:56.83%;top:37.82%;width:9.0%;height:23.43%">
+      <img class="ltr" src="assets/letters/I.png" alt="" style="left:70.42%;top:37.82%;width:1.92%;height:23.43%">
+      <img class="ltr" src="assets/letters/E.png" alt="" style="left:78.17%;top:37.82%;width:8.58%;height:23.43%">
+      <img class="ltr" src="assets/letters/R2.png" alt="" style="left:91.42%;top:37.82%;width:8.58%;height:23.9%">
     </div>
-
-    <div class="wordmark">FRONTIER</div>
-    <div class="tagline">Terra Classic Wallet</div>
+        <div class="tagline">Terra Classic Wallet</div>
     <p class="lede" style="text-align:center">Your keys stay on this device, so nobody else can move your funds and nobody else can recover them for you.</p>
   </div>
 
