@@ -987,6 +987,17 @@ function hue(sym){
   return 'hsl(' + h + ',62%,58%)';
 }
 const swatch = sym => COLOR[sym] || hue(sym);
+// Terraswap-fork factories. Every pair they make answers {pool:{}} the same
+// way, so one code path covers Terraport, Astroport and the rest. Pools that
+// were deployed straight from a wallet are invisible here - that is a known
+// gap, not an oversight.
+const FACTORIES = [
+  'terra1n75fgfc8clsssrm2k0fswgtzsvstdaah7la6sfu96szdu22xta0q57rqqr',
+  'terra1y55punu6m5cm8sgqdgt6ngevtyklaylc09qxputn6ksye4ptf9ysxmtyl6',
+  'terra1fctq9rwk6vn2v6pdyhydmczxxdsttrxd2qcsq6ffzp7akfnw2uqq3ueskn'
+];
+const THIN_LUNC = 500000;   // below this the quote is real but barely tradeable
+
 const smart = (addr, msg) =>
   getJSON(LCD + '/cosmwasm/wasm/v1/contract/' + addr + '/smart/' + btoa(JSON.stringify(msg)));
 
@@ -1008,6 +1019,34 @@ async function prices(){
     const d = await getJSON('https://api.coingecko.com/api/v3/simple/price?ids=terra-luna,terrausd&vs_currencies=usd', 8000);
     return { LUNC: d['terra-luna'] && d['terra-luna'].usd, USTC: d['terrausd'] && d['terrausd'].usd };
   } catch (e) { return {}; }
+}
+
+// price a CW20 from the deepest LUNC pair we can find for it
+async function poolPrice(token, dec){
+  const want = { asset_infos: [
+    { token: { contract_addr: token } },
+    { native_token: { denom: 'uluna' } }
+  ]};
+  const pairs = await Promise.all(FACTORIES.map(f =>
+    smart(f, { pair: want }).then(r => r.data && r.data.contract_addr).catch(() => null)
+  ));
+
+  let best = null;
+  await Promise.all(pairs.filter(Boolean).map(async pa => {
+    try {
+      const r = await smart(pa, { pool: {} });
+      const as = (r.data && r.data.assets) || [];
+      if (as.length !== 2) return;
+      const luncLeg = as.find(a => a.info.native_token && a.info.native_token.denom === 'uluna');
+      const tokLeg  = as.find(a => a.info.token && a.info.token.contract_addr === token);
+      if (!luncLeg || !tokLeg) return;
+      const lunc = amt(luncLeg.amount, 6);
+      const tok  = amt(tokLeg.amount, dec);
+      if (!tok || !lunc) return;
+      if (!best || lunc > best.depth) best = { depth: lunc, inLunc: lunc / tok };
+    } catch (e) {}
+  }));
+  return best;
 }
 
 async function loadBalances(addr){
@@ -1051,7 +1090,10 @@ async function loadBalances(addr){
         const d = info.data;
         const v = amt(bal.data && bal.data.balance, d.decimals);
         const logo = mkt && mkt.data && mkt.data.logo && mkt.data.logo.url;
-        if (v > 0) found.push({ sym: d.symbol, v, note: d.name, logo: logo || null });
+        if (v > 0) {
+          const pr = await poolPrice(c, d.decimals).catch(() => null);
+          found.push({ sym: d.symbol, v, note: d.name, logo: logo || null, pool: pr });
+        }
       } catch (e) { /* a dead contract must not take the screen down */ }
     }));
 
@@ -1059,8 +1101,16 @@ async function loadBalances(addr){
 
     let total = 0;
     list.innerHTML = found.length ? found.map(t => {
-      const p = px[t.sym];
-      const fiat = p ? t.v * p : null;
+      let fiat = null, sub = 'no price';
+      if (px[t.sym]) {
+        fiat = t.v * px[t.sym];
+        sub = '';
+      } else if (t.pool && px.LUNC) {
+        fiat = t.v * t.pool.inLunc * px.LUNC;
+        sub = t.pool.depth < THIN_LUNC
+          ? 'thin pool, ' + fmt(t.pool.depth) + ' LUNC'
+          : 'pool ' + fmt(t.pool.depth) + ' LUNC';
+      }
       if (fiat) total += fiat;
       return '<li class="row">' +
         (t.logo
@@ -1071,12 +1121,13 @@ async function loadBalances(addr){
         '<div class="row-main"><div class="row-name">' + t.sym + '</div>' +
         '<div class="row-amt">' + fmt(t.v) + (t.note ? ' \u00b7 ' + t.note : '') + '</div></div>' +
         '<div class="row-val"><div class="row-fiat">' + (fiat !== null ? usd(fiat) : '\u2014') + '</div>' +
-        '<div class="row-sub">' + (fiat !== null ? '' : 'no price') + '</div></div></li>';
+        '<div class="row-sub"' + (t.pool && t.pool.depth < THIN_LUNC ? ' style="color:var(--gold)"' : '') +
+        '>' + sub + '</div></div></li>';
     }).join('') : '<li class="empty">This address holds nothing yet.</li>';
 
     $('#tok-count').textContent = found.length || '';
     $('#bal-total').textContent = usd(total);
-    $('#home-note').textContent = 'Only LUNC and USTC have a price feed. Everything else shows its balance without a value rather than a made up one.';
+    $('#home-note').textContent = 'LUNC and USTC use a price feed. Other tokens are priced from the deepest LUNC pool on chain, which is what you could actually sell into. A thin pool is marked, because that quote will not survive a real sale.';
   } catch (e) {
     list.innerHTML = '<li class="empty">Could not reach the chain: ' + (e.message || e) + '</li>';
     $('#bal-total').textContent = '\u2014';
