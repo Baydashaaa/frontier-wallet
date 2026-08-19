@@ -23,9 +23,12 @@ body{background:var(--bg);color:var(--text);font-family:'Exo 2',system-ui,sans-s
   background:rgba(123,92,255,.20);filter:blur(120px);pointer-events:none;z-index:0}
 
 .step{display:none;position:relative;z-index:1;max-width:520px;margin:0 auto;
-  padding:24px 20px calc(28px + env(safe-area-inset-bottom,0px));min-height:100vh;
+  padding:calc(24px + var(--tg-content-safe-area-inset-top, var(--tg-safe-area-inset-top, 0px))) 20px
+          calc(46px + env(safe-area-inset-bottom,0px) + var(--tg-safe-area-inset-bottom, 0px));
+  min-height:100vh;
   flex-direction:column}
 .step.on{display:flex;animation:fade .22s ease}
+.step{min-height:var(--tg-viewport-stable-height, 100vh)}
 @keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 
 .bar{display:flex;align-items:center;gap:12px;margin-bottom:22px;min-height:34px}
@@ -239,7 +242,8 @@ textarea{resize:none;min-height:110px;line-height:1.8}
   padding:12px 14px;font-family:ui-monospace,monospace;font-size:11px;color:#FFD9D9;
   line-height:1.5;max-height:40vh;overflow:auto;word-break:break-word}
 .crash.on{display:block}
-#rt{position:fixed;left:0;right:0;bottom:0;z-index:60;padding:5px 10px;
+#rt{position:fixed;left:0;right:0;bottom:0;z-index:60;
+  padding:5px 10px calc(5px + env(safe-area-inset-bottom,0px));
   background:rgba(11,15,26,.94);border-top:1px solid var(--border);
   font-family:ui-monospace,monospace;font-size:9.5px;line-height:1.4;
   color:var(--muted);text-align:center;pointer-events:none;word-break:break-word}
