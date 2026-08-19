@@ -489,19 +489,11 @@ $$('[data-go]').forEach(el => el.addEventListener('click', () => go(el.dataset.g
 
 async function libs(){
   if (bip39) return;
-  const timeout = new Promise((_, rej) =>
-    setTimeout(() => rej(new Error('crypto libraries did not load, check the connection')), 15000));
-  const load = Promise.all([
-    import('https://esm.sh/@scure/bip39@1.3.0'),
-    import('https://esm.sh/@scure/bip39@1.3.0/wordlists/english'),
-    import('https://esm.sh/@scure/bip32@1.4.0'),
-    import('https://esm.sh/@scure/base@1.1.6'),
-    import('https://esm.sh/@noble/hashes@1.4.0/ripemd160'),
-    import('https://esm.sh/@noble/hashes@1.4.0/sha256')
-  ]);
-  const [b39, wl, b32, b, r, s] = await Promise.race([load, timeout]);
-  bip39 = { ...b39, wordlist: wl.wordlist };
-  bip32 = b32; base = b; ripe = r; sha = s;
+  const m = await import('./vendor/crypto.js');
+  bip39 = { ...m.bip39, wordlist: m.wordlist };
+  bip32 = m.bip32; base = m.base;
+  ripe = { ripemd160: m.ripemd160 };
+  sha  = { sha256: m.sha256 };
 }
 
 /* ---------------- length toggle ---------------- */
