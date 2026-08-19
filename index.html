@@ -23,8 +23,8 @@ body{background:var(--bg);color:var(--text);font-family:'Exo 2',system-ui,sans-s
   background:rgba(123,92,255,.20);filter:blur(120px);pointer-events:none;z-index:0}
 
 .step{display:none;position:relative;z-index:1;max-width:520px;margin:0 auto;
-  padding:calc(24px + var(--tg-content-safe-area-inset-top, var(--tg-safe-area-inset-top, 0px))) 20px
-          calc(46px + env(safe-area-inset-bottom,0px) + var(--tg-safe-area-inset-bottom, 0px));
+  padding:calc(20px + var(--pad-top, 0px)) 20px
+          calc(28px + env(safe-area-inset-bottom,0px));
   min-height:100vh;
   flex-direction:column}
 .step.on{display:flex;animation:fade .22s ease}
@@ -257,7 +257,8 @@ textarea{resize:none;min-height:110px;line-height:1.8}
 .row{display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--border);
   border-radius:var(--r-row);padding:12px 15px}
 .sym{display:grid;place-items:center;width:40px;height:40px;border-radius:50%;flex:none;
-  font-family:'Rajdhani',sans-serif;font-weight:700;font-size:14px;color:#0B0F1A}
+  font-family:'Rajdhani',sans-serif;font-weight:700;font-size:14px;color:#0B0F1A;overflow:hidden}
+.sym img{width:100%;height:100%;object-fit:cover;display:block}
 .row-main{flex:1;min-width:0}
 .row-name{font-weight:600;font-size:15px}
 .row-amt{font-size:12.5px;color:var(--muted);margin-top:1px}
@@ -291,11 +292,7 @@ textarea{resize:none;min-height:110px;line-height:1.8}
   padding:12px 14px;font-family:ui-monospace,monospace;font-size:11px;color:#FFD9D9;
   line-height:1.5;max-height:40vh;overflow:auto;word-break:break-word}
 .crash.on{display:block}
-#rt{position:fixed;left:0;right:0;bottom:0;z-index:60;
-  padding:5px 10px calc(5px + env(safe-area-inset-bottom,0px));
-  background:rgba(11,15,26,.94);border-top:1px solid var(--border);
-  font-family:ui-monospace,monospace;font-size:9.5px;line-height:1.4;
-  color:var(--muted);text-align:center;pointer-events:none;word-break:break-word}
+#rt{display:none}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
@@ -612,6 +609,22 @@ const $$ = s => Array.from(document.querySelectorAll(s));
 const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
 if (tg) { tg.ready(); tg.expand(); }
 const tap  = () => { if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light'); };
+
+/* Telegram floats its close button over the page instead of reserving space,
+   and on this build the safe-area vars come back as zero, so a floor is the
+   only thing that reliably keeps content clear of it. */
+function applyInsets(){
+  const a = (tg && tg.contentSafeAreaInset && tg.contentSafeAreaInset.top) || 0;
+  const b = (tg && tg.safeAreaInset && tg.safeAreaInset.top) || 0;
+  const floor = tg ? 58 : 0;
+  document.documentElement.style.setProperty('--pad-top', Math.max(a + b, floor) + 'px');
+}
+applyInsets();
+if (tg && tg.onEvent) {
+  ['safeAreaChanged','contentSafeAreaChanged','viewportChanged'].forEach(ev => {
+    try { tg.onEvent(ev, applyInsets); } catch (e) {}
+  });
+}
 const buzz = k => { if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred(k); };
 
 /* the webview keeps focus after a tap outside, so drop it by hand */
@@ -1030,13 +1043,15 @@ async function loadBalances(addr){
     // cw20: ask each contract who it is, then what we hold
     await Promise.all(CW20.map(async c => {
       try {
-        const [info, bal] = await Promise.all([
+        const [info, bal, mkt] = await Promise.all([
           smart(c, { token_info: {} }),
-          smart(c, { balance: { address: addr } })
+          smart(c, { balance: { address: addr } }),
+          smart(c, { marketing_info: {} }).catch(() => null)
         ]);
         const d = info.data;
         const v = amt(bal.data && bal.data.balance, d.decimals);
-        if (v > 0) found.push({ sym: d.symbol, v, note: d.name });
+        const logo = mkt && mkt.data && mkt.data.logo && mkt.data.logo.url;
+        if (v > 0) found.push({ sym: d.symbol, v, note: d.name, logo: logo || null });
       } catch (e) { /* a dead contract must not take the screen down */ }
     }));
 
@@ -1048,7 +1063,11 @@ async function loadBalances(addr){
       const fiat = p ? t.v * p : null;
       if (fiat) total += fiat;
       return '<li class="row">' +
-        '<span class="sym" style="background:' + swatch(t.sym) + '">' + t.sym[0] + '</span>' +
+        (t.logo
+          ? '<span class="sym" style="background:' + swatch(t.sym) + '">' +
+            '<img src="' + t.logo + '" alt="" ' +
+            'onerror="this.remove();this.parentNode.textContent=\'' + t.sym[0] + '\'"></span>'
+          : '<span class="sym" style="background:' + swatch(t.sym) + '">' + t.sym[0] + '</span>') +
         '<div class="row-main"><div class="row-name">' + t.sym + '</div>' +
         '<div class="row-amt">' + fmt(t.v) + (t.note ? ' \u00b7 ' + t.note : '') + '</div></div>' +
         '<div class="row-val"><div class="row-fiat">' + (fiat !== null ? usd(fiat) : '\u2014') + '</div>' +
