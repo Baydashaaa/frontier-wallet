@@ -239,10 +239,15 @@ textarea{resize:none;min-height:110px;line-height:1.8}
   padding:12px 14px;font-family:ui-monospace,monospace;font-size:11px;color:#FFD9D9;
   line-height:1.5;max-height:40vh;overflow:auto;word-break:break-word}
 .crash.on{display:block}
+#rt{position:fixed;left:0;right:0;bottom:0;z-index:60;padding:5px 10px;
+  background:rgba(11,15,26,.94);border-top:1px solid var(--border);
+  font-family:ui-monospace,monospace;font-size:9.5px;line-height:1.4;
+  color:var(--muted);text-align:center;pointer-events:none;word-break:break-word}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
 <body>
+<div id="rt"></div>
 <div class="orb"></div>
 
 <!-- ================= WELCOME ================= -->
@@ -891,14 +896,19 @@ function showStore(){
   el.innerHTML = 'stored in <b>' + label + '</b>';
   el.classList.toggle('weak', Store.kind !== 'secure');
 
-  // say exactly what the runtime offers, so 'memory only' is never a guess
-  const note = $('#home-note');
-  if (note && Store.kind !== 'secure') {
-    note.textContent = tg
-      ? 'WebApp ' + (tg.version || '?') + ' on ' + (tg.platform || '?') +
-        ' | SecureStorage: ' + (tg.SecureStorage ? 'yes' : 'no') +
-        ' | CloudStorage: ' + (tg.CloudStorage ? 'yes' : 'no')
-      : 'window.Telegram.WebApp is absent - this is a plain browser, or telegram-web-app.js did not load';
+  const rt = $('#rt');
+  if (rt) {
+    const w = window.Telegram;
+    rt.textContent = !w
+      ? 'window.Telegram absent - plain browser, or telegram-web-app.js failed to load'
+      : !w.WebApp
+        ? 'window.Telegram exists but WebApp does not'
+        : 'WebApp ' + (w.WebApp.version || '?') + ' / ' + (w.WebApp.platform || '?') +
+          ' | initData ' + ((w.WebApp.initData || '').length) +
+          ' | Secure ' + (w.WebApp.SecureStorage ? 'y' : 'n') +
+          ' | Cloud ' + (w.WebApp.CloudStorage ? 'y' : 'n') +
+          ' | Device ' + (w.WebApp.DeviceStorage ? 'y' : 'n') +
+          ' | store=' + Store.kind;
   }
 }
 
