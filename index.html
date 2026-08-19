@@ -230,6 +230,55 @@ textarea{resize:none;min-height:110px;line-height:1.8}
   padding:22px 18px;margin-bottom:16px;cursor:text;text-align:center}
 .pinbox label{margin-bottom:14px}
 .tiny{font-size:11.5px;color:var(--muted);text-align:center;line-height:1.6;margin-top:10px}
+.wtop{display:flex;align-items:center;gap:11px;margin-bottom:16px}
+.wava{width:40px;height:40px;border-radius:50%;flex:none;
+  background:linear-gradient(135deg,var(--accent-dark),var(--accent2))}
+.wwho{flex:1;min-width:0}
+.wname{font-weight:600;font-size:15px;line-height:1.2}
+.waddr{font-size:12px;color:var(--muted);margin-top:1px;font-family:ui-monospace,monospace}
+.bal{position:relative;overflow:hidden;background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--r-card);padding:24px 20px;margin-bottom:18px;text-align:center}
+.bal::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent,var(--accent),transparent);opacity:.55}
+.bal-label{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin-bottom:9px}
+.bal-value{font-family:'Rajdhani',sans-serif;font-weight:700;font-size:40px;line-height:1;color:#fff;
+  text-shadow:0 0 30px rgba(123,92,255,.32)}
+.acts{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:24px}
+.act{display:flex;flex-direction:column;align-items:center;gap:7px;background:none;border:none;
+  color:var(--text);font-family:inherit;font-size:11.5px;cursor:pointer;transition:transform .12s}
+.act:active{transform:scale(.92)}
+.act i{display:grid;place-items:center;width:52px;height:52px;border-radius:18px;
+  background:rgba(123,92,255,.10);border:1px solid rgba(123,92,255,.28)}
+.act svg{width:20px;height:20px;stroke:var(--accent);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.head{display:flex;align-items:baseline;justify-content:space-between;margin:0 4px 10px}
+.head h2{font-family:'Rajdhani',sans-serif;font-weight:700;font-size:17px;color:#fff}
+.head span{font-size:12px;color:var(--muted)}
+.rows{list-style:none;display:flex;flex-direction:column;gap:8px;margin-bottom:22px}
+.row{display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--r-row);padding:12px 15px}
+.sym{display:grid;place-items:center;width:40px;height:40px;border-radius:50%;flex:none;
+  font-family:'Rajdhani',sans-serif;font-weight:700;font-size:14px;color:#0B0F1A}
+.row-main{flex:1;min-width:0}
+.row-name{font-weight:600;font-size:15px}
+.row-amt{font-size:12.5px;color:var(--muted);margin-top:1px}
+.row-val{text-align:right;flex:none}
+.row-fiat{font-family:'Rajdhani',sans-serif;font-weight:700;font-size:16px;color:#fff}
+.row-sub{font-size:11px;margin-top:2px;color:var(--muted)}
+.tabs{position:fixed;left:0;right:0;bottom:0;z-index:40;display:none;
+  background:rgba(11,15,26,.94);backdrop-filter:blur(16px);border-top:1px solid var(--border);
+  padding-bottom:env(safe-area-inset-bottom,0px)}
+.tabs.on{display:flex}
+.tab{flex:1;background:none;border:none;padding:9px 0 8px;display:flex;flex-direction:column;
+  align-items:center;gap:4px;color:var(--muted);font-family:inherit;font-size:10.5px;cursor:pointer}
+.tab svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.tab.sel{color:var(--accent)}
+.wpad{padding-bottom:74px}
+.set{display:flex;align-items:center;gap:13px;background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--r-row);padding:15px;margin-bottom:8px;font-size:14px;cursor:pointer}
+.set svg{width:18px;height:18px;stroke:var(--muted);fill:none;stroke-width:1.7;flex:none}
+.set span{flex:1}
+.set.danger span{color:var(--red)} .set.danger svg{stroke:var(--red)}
+.empty{text-align:center;padding:34px 16px;color:var(--muted);font-size:13px;line-height:1.7}
 .store{display:inline-flex;align-items:center;gap:6px;font-size:10.5px;letter-spacing:.1em;
   text-transform:uppercase;color:var(--muted);background:var(--surface2);border:1px solid var(--border);
   border-radius:999px;padding:4px 11px;margin:0 auto 18px}
@@ -454,20 +503,61 @@ textarea{resize:none;min-height:110px;line-height:1.8}
 </section>
 
 <!-- ================= HOME (placeholder) ================= -->
-<section class="step" id="st-home">
-  <div class="bar"><div class="dots"></div></div>
-  <h1>Wallet unlocked</h1>
-  <p class="lede">The balance, send and staking screens are not wired into this build yet. What works is the part underneath: the key is decrypted in memory and never leaves the device.</p>
-  <div class="store" id="store-kind">stored in <b>...</b></div>
-  <div class="addr">
-    <label>Your address</label>
-    <code id="home-addr">...</code>
+<section class="step wpad" id="st-home">
+  <div class="wtop">
+    <div class="wava"></div>
+    <div class="wwho">
+      <div class="wname">Main</div>
+      <div class="waddr" id="home-addr">...</div>
+    </div>
   </div>
+
+  <div class="bal">
+    <div class="bal-label">Total balance</div>
+    <div class="bal-value" id="bal-total">...</div>
+  </div>
+
+  <div class="acts">
+    <button class="act" id="act-recv"><i><svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg></i>Receive</button>
+    <button class="act" id="act-send"><i><svg viewBox="0 0 24 24"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg></i>Send</button>
+    <button class="act" id="act-stake"><i><svg viewBox="0 0 24 24"><path d="M12 3 3 8l9 5 9-5-9-5Z"/><path d="m3 16 9 5 9-5"/><path d="m3 12 9 5 9-5"/></svg></i>Stake</button>
+  </div>
+
+  <div class="head"><h2>Tokens</h2><span id="tok-count"></span></div>
+  <ul class="rows" id="tok-list"><li class="empty">Loading balances</li></ul>
   <p class="tiny" id="home-note"></p>
-  <div class="grow"></div>
-  <button class="btn" id="btn-lock">Lock</button>
-  <button class="btn quiet" id="btn-reset">Delete wallet from this device</button>
 </section>
+
+<section class="step wpad" id="st-stake">
+  <div class="head" style="margin:6px 4px 14px"><h2>Staking</h2><span id="stk-count"></span></div>
+  <div id="stk-body"><div class="empty">Loading</div></div>
+</section>
+
+<section class="step wpad" id="st-activity">
+  <div class="head" style="margin:6px 4px 14px"><h2>Activity</h2></div>
+  <div class="empty">Transaction history needs an indexer, not the LCD, so it is not wired up yet. Everything else on this screen would be guesswork, so there is nothing here rather than something fake.</div>
+</section>
+
+<section class="step wpad" id="st-settings">
+  <div class="head" style="margin:6px 4px 14px"><h2>Settings</h2></div>
+  <div class="store" id="store-kind">stored in <b>...</b></div>
+  <div class="set" id="set-network">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18 15 15 0 0 1 0-18Z"/></svg>
+    <span>Network</span><b style="font-size:12px;color:var(--muted);font-weight:400">columbus-5</b></div>
+  <div class="set" id="btn-lock">
+    <svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+    <span>Lock wallet</span></div>
+  <div class="set danger" id="btn-reset">
+    <svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
+    <span>Delete wallet from this device</span></div>
+</section>
+
+<nav class="tabs" id="tabs">
+  <button class="tab sel" data-tab="home"><svg viewBox="0 0 24 24"><path d="m3 10 9-7 9 7v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><path d="M9 21v-8h6v8"/></svg>Home</button>
+  <button class="tab" data-tab="stake"><svg viewBox="0 0 24 24"><path d="M12 3 3 8l9 5 9-5-9-5Z"/><path d="m3 16 9 5 9-5"/></svg>Stake</button>
+  <button class="tab" data-tab="activity"><svg viewBox="0 0 24 24"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg>Activity</button>
+  <button class="tab" data-tab="settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8 2 2 0 1 1-2.8 2.8 1.6 1.6 0 0 0-2.7 1.1 2 2 0 1 1-4 0 1.6 1.6 0 0 0-2.7-1.1 2 2 0 1 1-2.8-2.8 1.6 1.6 0 0 0-1.1-2.7 2 2 0 1 1 0-4 1.6 1.6 0 0 0 1.1-2.7 2 2 0 1 1 2.8-2.8 1.6 1.6 0 0 0 2.7-1.1 2 2 0 1 1 4 0 1.6 1.6 0 0 0 2.7 1.1 2 2 0 1 1 2.8 2.8 1.6 1.6 0 0 0 1.1 2.7 2 2 0 1 1 0 4 1.6 1.6 0 0 0-1.4 1Z"/></svg>Settings</button>
+</nav>
 
 <section class="step" id="st-done">
   <div class="bar"><div class="dots"></div></div>
@@ -540,8 +630,14 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Enter' && e.target.tagName === 'INPUT') { e.preventDefault(); dropKeyboard(); }
 });
 
+const WALLET_TABS = ['home','stake','activity','settings'];
 function go(name){
   tap();
+  const t = $('#tabs');
+  if (t) {
+    t.classList.toggle('on', WALLET_TABS.includes(name));
+    t.querySelectorAll('.tab').forEach(b => b.classList.toggle('sel', b.dataset.tab === name));
+  }
   // the intro plays once; coming back to welcome later must be instant
   $('#st-welcome').classList.remove('intro');
   $$('.step').forEach(s => s.classList.remove('on'));
@@ -846,10 +942,7 @@ async function finish(mnemonic){
   $('#kdf-note').textContent = 'Key derivation took ' + ms + ' ms here with ' +
     ITER.toLocaleString() + ' PBKDF2 iterations. That delay repeats on every unlock, so pick the number against the slowest phone you care about, not this one.';
   await saveWallet(addr, blob);
-  $('#home-addr').textContent = addr;
-  $('#home-note').textContent =
-    'PIN check took ' + ms + ' ms on this device. That delay repeats on every unlock.';
-  go('home');
+  openWallet(addr);
 }
 
 $('#btn-verify').addEventListener('click', async () => {
@@ -859,6 +952,119 @@ $('#btn-verify').addEventListener('click', async () => {
   catch (e) { b.textContent = 'Something went wrong'; }
   finally { b.innerHTML = 'Create wallet'; }
 });
+
+/* ---------------- chain reads ---------------- */
+const LCD = 'https://terra-classic-lcd.publicnode.com';
+// TERRA is a CW20 too but its contract address is not confirmed yet, so it is
+// left out rather than guessed at
+const CW20 = [
+  { sym:'TCO', dec:6, addr:'terra1566znlxwke0kp9jkhe6qgapsmcfdmc7k9czh380tlx80va8zlsgqzvjtfp' }
+];
+const NATIVE = { uluna:{sym:'LUNC',dec:6}, uusd:{sym:'USTC',dec:6} };
+const COLOR  = { LUNC:'#7B5CFF', USTC:'#00FFB0', TCO:'#00D4FF', TERRA:'#E8C840' };
+
+async function getJSON(url, ms = 12000){
+  const c = new AbortController();
+  const t = setTimeout(() => c.abort(), ms);
+  try {
+    const r = await fetch(url, { signal:c.signal });
+    if (!r.ok) throw new Error(url.split('/').pop() + ' -> ' + r.status);
+    return await r.json();
+  } finally { clearTimeout(t); }
+}
+const amt = (raw, dec) => Number(raw || 0) / Math.pow(10, dec);
+const fmt = v => v.toLocaleString('en-US', { maximumFractionDigits: v < 1 ? 6 : 2 });
+const usd = v => '$' + v.toLocaleString('en-US', { minimumFractionDigits:2, maximumFractionDigits:2 });
+
+async function prices(){
+  try {
+    const d = await getJSON('https://api.coingecko.com/api/v3/simple/price?ids=terra-luna,terrausd&vs_currencies=usd', 8000);
+    return { LUNC: d['terra-luna'] && d['terra-luna'].usd, USTC: d['terrausd'] && d['terrausd'].usd };
+  } catch (e) { return {}; }
+}
+
+async function loadBalances(addr){
+  const list = $('#tok-list');
+  try {
+    const [bank, px] = await Promise.all([
+      getJSON(LCD + '/cosmos/bank/v1beta1/balances/' + addr),
+      prices()
+    ]);
+    const held = {};
+    (bank.balances || []).forEach(b => {
+      const meta = NATIVE[b.denom];
+      if (meta) held[meta.sym] = amt(b.amount, meta.dec);
+    });
+    for (const t of CW20) {
+      try {
+        const q = btoa(JSON.stringify({ balance:{ address: addr } }));
+        const r = await getJSON(LCD + '/cosmwasm/wasm/v1/contract/' + t.addr + '/smart/' + q);
+        held[t.sym] = amt(r.data && r.data.balance, t.dec);
+      } catch (e) { held[t.sym] = 0; }
+    }
+
+    const order = ['LUNC','USTC','TCO'];
+    let total = 0;
+    list.innerHTML = order.map(sym => {
+      const v = held[sym] || 0;
+      const p = px[sym];
+      const fiat = p ? v * p : null;
+      if (fiat) total += fiat;
+      return '<li class="row">' +
+        '<span class="sym" style="background:' + COLOR[sym] + '">' + sym[0] + '</span>' +
+        '<div class="row-main"><div class="row-name">' + sym + '</div>' +
+        '<div class="row-amt">' + fmt(v) + '</div></div>' +
+        '<div class="row-val"><div class="row-fiat">' + (fiat !== null ? usd(fiat) : '\u2014') + '</div>' +
+        '<div class="row-sub">' + (fiat !== null ? '' : 'no market') + '</div></div></li>';
+    }).join('');
+    $('#tok-count').textContent = order.length;
+    $('#bal-total').textContent = usd(total);
+    $('#home-note').textContent = 'TCO is still on its bonding curve, so it has no price. The balance is real, the value is not shown.';
+  } catch (e) {
+    list.innerHTML = '<li class="empty">Could not reach the chain: ' + (e.message || e) + '</li>';
+    $('#bal-total').textContent = '\u2014';
+  }
+}
+
+async function loadStaking(addr){
+  const body = $('#stk-body');
+  try {
+    const [dels, rew] = await Promise.all([
+      getJSON(LCD + '/cosmos/staking/v1beta1/delegations/' + addr),
+      getJSON(LCD + '/cosmos/distribution/v1beta1/delegators/' + addr + '/rewards').catch(() => ({}))
+    ]);
+    const rows = dels.delegation_responses || [];
+    $('#stk-count').textContent = rows.length ? rows.length + ' validator' + (rows.length > 1 ? 's' : '') : '';
+    if (!rows.length) {
+      body.innerHTML = '<div class="empty">Nothing staked yet. Delegating LUNC earns rewards and gives your address weight in governance votes.</div>';
+      return;
+    }
+    const staked = rows.reduce((a, r) => a + amt(r.balance && r.balance.amount, 6), 0);
+    let pending = 0;
+    (rew.total || []).forEach(t => { if (t.denom === 'uluna') pending += amt(t.amount, 6); });
+
+    body.innerHTML =
+      '<div class="bal" style="margin-bottom:14px"><div class="bal-label">Staked</div>' +
+      '<div class="bal-value" style="font-size:32px">' + fmt(staked) + ' <span style="font-size:18px;color:var(--muted)">LUNC</span></div>' +
+      '<div class="row-sub" style="margin-top:8px">Rewards ' + fmt(pending) + ' LUNC</div></div>' +
+      rows.map(r =>
+        '<div class="row"><span class="sym" style="background:var(--surface2);color:var(--muted)">\u25c8</span>' +
+        '<div class="row-main"><div class="row-name" style="font-size:13px;word-break:break-all">' +
+        r.delegation.validator_address.slice(0,20) + '\u2026</div></div>' +
+        '<div class="row-val"><div class="row-fiat">' + fmt(amt(r.balance.amount, 6)) + '</div></div></div>'
+      ).join('') +
+      '<p class="tiny">Unstaking takes 21 days. Sending and claiming are not wired up in this build.</p>';
+  } catch (e) {
+    body.innerHTML = '<div class="empty">Could not load staking: ' + (e.message || e) + '</div>';
+  }
+}
+
+function openWallet(addr){
+  $('#home-addr').textContent = addr.slice(0,14) + '\u2026' + addr.slice(-6);
+  go('home');
+  loadBalances(addr);
+  loadStaking(addr);
+}
 
 /* ---------------- storage ----------------
    SecureStorage is backed by the iOS Keychain and the Android Keystore,
@@ -952,10 +1158,8 @@ $('#pu').addEventListener('input', async () => {
     await libs();
     MNEMONIC = await decryptSeed(SAVED.blob, v);
     PASS = v; tries = 0;
-    $('#home-addr').textContent = SAVED.addr;
-    $('#home-note').textContent = '';
     saveWallet(SAVED.addr, SAVED.blob);
-    go('home');
+    openWallet(SAVED.addr);
   } catch (e) {
     // OperationError is what AES-GCM throws on a bad key; anything else is a real fault
     const badPin = e && (e.name === 'OperationError' || e.name === 'InvalidAccessError');
@@ -972,6 +1176,17 @@ $('#pu').addEventListener('input', async () => {
     setTimeout(() => { $('#pu').value = ''; dots('pinrowU', 0); }, 550);
   }
 });
+
+document.querySelectorAll('#tabs .tab').forEach(b =>
+  b.addEventListener('click', () => go(b.dataset.tab)));
+$('#act-stake').addEventListener('click', () => go('stake'));
+$('#act-recv').addEventListener('click', () => {
+  const a = SAVED && SAVED.addr;
+  if (a && navigator.clipboard) navigator.clipboard.writeText(a).then(() => buzz('success'));
+  alert(a || 'no address');
+});
+$('#act-send').addEventListener('click', () =>
+  alert('Sending is not built yet. It needs the burn tax added on top of the fee, which is the next piece of work.'));
 
 $('#btn-lock').addEventListener('click', () => {
   MNEMONIC = null; PASS = null;
