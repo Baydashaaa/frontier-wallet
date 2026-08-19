@@ -1,0 +1,854 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1">
+<meta name="theme-color" content="#0B0F1A">
+<title>Frontier Wallet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@400;500;600;700&family=Rajdhani:wght@600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0B0F1A; --surface:#12182A; --surface2:#161E30; --border:#1E2A42;
+  --accent:#7B5CFF; --accent2:#00D4FF; --accent-dark:#3B1FCC;
+  --text:#E8F0FF; --muted:#6B82A8; --green:#00FFB0; --gold:#E8C840; --red:#FF6B6B;
+  --r-card:20px; --r-row:14px;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html{background:var(--bg)}
+body{background:var(--bg);color:var(--text);font-family:'Exo 2',system-ui,sans-serif;
+  font-size:15px;line-height:1.5;min-height:100vh;overflow-x:hidden}
+.orb{position:fixed;top:-200px;right:-130px;width:400px;height:400px;border-radius:50%;
+  background:rgba(123,92,255,.20);filter:blur(120px);pointer-events:none;z-index:0}
+
+.step{display:none;position:relative;z-index:1;max-width:520px;margin:0 auto;
+  padding:24px 20px calc(28px + env(safe-area-inset-bottom,0px));min-height:100vh;
+  flex-direction:column}
+.step.on{display:flex;animation:fade .22s ease}
+@keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+.bar{display:flex;align-items:center;gap:12px;margin-bottom:22px;min-height:34px}
+.back{width:34px;height:34px;flex:none;border-radius:50%;border:1px solid var(--border);
+  background:var(--surface);display:grid;place-items:center;cursor:pointer}
+.back svg{width:16px;height:16px;stroke:var(--muted);fill:none;stroke-width:2;stroke-linecap:round}
+.dots{display:flex;gap:5px;margin-left:auto}
+.dot{width:22px;height:3px;border-radius:2px;background:var(--border);transition:background .25s}
+.dot.on{background:var(--accent)}
+
+h1{font-family:'Rajdhani',sans-serif;font-weight:700;font-size:27px;color:#fff;
+  line-height:1.15;margin-bottom:9px}
+.lede{font-size:14px;color:var(--muted);line-height:1.65;margin-bottom:20px}
+.grow{flex:1;min-height:12px}
+
+/* ---- logo + intro ---- */
+.logowrap{position:relative;width:148px;height:148px;margin:0 auto 24px}
+.logowrap::before{content:'';position:absolute;inset:-32%;border-radius:50%;pointer-events:none;
+  background:radial-gradient(circle,rgba(123,92,255,.42) 0%,rgba(123,92,255,.16) 42%,rgba(123,92,255,0) 70%)}
+.logo{position:relative;width:100%;height:100%;display:block}
+#spark{opacity:0}
+.wordmark{font-family:'Rajdhani',sans-serif;font-weight:700;font-size:38px;color:#fff;
+  text-align:center;letter-spacing:.09em;line-height:1;margin-bottom:12px}
+.tagline{font-size:10.5px;letter-spacing:.34em;text-transform:uppercase;color:var(--muted);
+  text-align:center;margin-bottom:26px}
+
+/* played once on first launch, skipped afterwards */
+.intro #spark{animation:spark .45s ease-out .15s both}
+.intro #star{animation:star .55s cubic-bezier(.2,.9,.25,1) .5s both}
+.intro #ring{animation:ring .65s ease-out .9s both}
+.intro .wordmark{animation:rise .45s ease-out 1.3s both}
+.intro .tagline{animation:rise .45s ease-out 1.45s both}
+.intro .lede{animation:rise .45s ease-out 1.55s both}
+.intro .btns{animation:rise .5s ease-out 1.65s both}
+
+@keyframes spark{
+  0%{opacity:0;transform:scale(.2)}
+  55%{opacity:1;transform:scale(1.5)}
+  100%{opacity:0;transform:scale(.4)}
+}
+@keyframes star{
+  from{opacity:0;transform:scale(.05) rotate(-70deg)}
+  to{opacity:1;transform:scale(1) rotate(0)}
+}
+@keyframes ring{
+  from{stroke-dashoffset:560;opacity:0}
+  to{stroke-dashoffset:0;opacity:1}
+}
+@keyframes rise{
+  from{opacity:0;transform:translateY(12px)}
+  to{opacity:1;transform:none}
+}
+#spark,#star{transform-box:fill-box;transform-origin:center}
+@media (prefers-reduced-motion:reduce){
+  .intro #spark,.intro #star,.intro #ring,.intro .wordmark,
+  .intro .tagline,.intro .lede,.intro .btns{animation:none}
+}
+
+.btn{display:block;width:100%;font-family:inherit;font-size:14px;font-weight:700;
+  padding:15px 20px;border-radius:999px;border:1px solid var(--accent);
+  background:rgba(123,92,255,.12);color:var(--accent);cursor:pointer;
+  transition:transform .12s,opacity .2s;margin-top:10px;text-align:center}
+.btn:active{transform:scale(.97)}
+.btn.solid{background:linear-gradient(135deg,var(--accent-dark),var(--accent));
+  border-color:transparent;color:#fff}
+.btn:disabled{opacity:.35;cursor:not-allowed}
+.btn.quiet{border-color:var(--border);background:transparent;color:var(--muted)}
+
+label{display:block;font-size:11px;letter-spacing:.15em;text-transform:uppercase;
+  color:var(--muted);margin-bottom:8px}
+input[type=password],textarea{width:100%;background:rgba(123,92,255,.04);
+  border:1px solid var(--border);border-radius:12px;color:var(--text);
+  font-family:inherit;font-size:15px;padding:14px 15px;outline:none;
+  transition:border-color .2s,box-shadow .2s;-webkit-appearance:none}
+input:focus,textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(123,92,255,.10)}
+textarea{resize:none;min-height:110px;line-height:1.8}
+.field{margin-bottom:16px}
+
+/* segmented control */
+.seg{display:flex;gap:6px;background:var(--surface);border:1px solid var(--border);
+  border-radius:999px;padding:4px;margin-bottom:18px}
+.seg button{flex:1;background:transparent;border:none;border-radius:999px;padding:10px 8px;
+  font-family:inherit;font-size:13px;font-weight:700;color:var(--muted);cursor:pointer;
+  transition:all .18s}
+.seg button.on{background:linear-gradient(135deg,var(--accent-dark),var(--accent));color:#fff}
+
+.meter{height:4px;border-radius:2px;background:var(--border);overflow:hidden;margin-top:10px}
+.meter i{display:block;height:100%;width:0;background:var(--red);transition:width .3s,background .3s}
+.meter-txt{font-size:12px;color:var(--muted);margin-top:7px;min-height:18px}
+
+.warn{display:flex;gap:11px;align-items:flex-start;background:rgba(232,200,64,.05);
+  border:1px solid rgba(232,200,64,.28);border-radius:var(--r-row);padding:14px;margin-bottom:16px}
+.warn svg{width:17px;height:17px;stroke:var(--gold);fill:none;stroke-width:1.8;flex:none;margin-top:2px}
+.warn p{font-size:12.5px;color:var(--muted);line-height:1.65}
+.warn b{color:var(--gold);font-weight:600}
+.warn.red{background:rgba(255,107,107,.05);border-color:rgba(255,107,107,.28)}
+.warn.red svg{stroke:var(--red)} .warn.red b{color:var(--red)}
+
+/* seed grid */
+.seedwrap{position:relative;margin-bottom:12px}
+.seed{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--r-card);padding:14px}
+.seed.long{grid-template-columns:repeat(3,1fr);gap:6px}
+.word{display:flex;align-items:baseline;gap:5px;background:var(--surface2);
+  border:1px solid var(--border);border-radius:9px;padding:8px 7px}
+.word i{font-style:normal;font-size:9.5px;color:var(--muted);min-width:14px}
+.word b{font-weight:600;font-size:13px}
+.seed.long .word b{font-size:12px}
+.veil{position:absolute;inset:0;border-radius:var(--r-card);
+  background:rgba(11,15,26,.72);backdrop-filter:blur(9px);
+  display:grid;place-items:center;cursor:pointer;text-align:center;padding:20px}
+.veil.gone{display:none}
+.veil svg{width:26px;height:26px;stroke:var(--accent);fill:none;stroke-width:1.7;margin-bottom:9px}
+.veil p{font-size:13px;color:var(--text);font-weight:600}
+.veil span{font-size:12px;color:var(--muted);display:block;margin-top:4px}
+
+.copyrow{display:flex;gap:8px;margin-bottom:14px}
+.copybtn{flex:1;background:var(--surface);border:1px solid var(--border);border-radius:12px;
+  padding:12px;font-family:inherit;font-size:13px;font-weight:600;color:var(--text);
+  cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:all .15s}
+.copybtn:active{transform:scale(.97)}
+.copybtn.done{border-color:var(--green);color:var(--green)}
+.copybtn svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8}
+
+.check{display:flex;gap:11px;align-items:flex-start;cursor:pointer;padding:4px 2px;margin-bottom:6px}
+.box{width:21px;height:21px;flex:none;border-radius:6px;border:1.5px solid var(--border);
+  display:grid;place-items:center;margin-top:1px;transition:all .18s}
+.box svg{width:12px;height:12px;stroke:#fff;fill:none;stroke-width:3;stroke-linecap:round;opacity:0}
+.check.on .box{background:var(--accent);border-color:var(--accent)}
+.check.on .box svg{opacity:1}
+.check p{font-size:13px;color:var(--muted);line-height:1.6}
+
+/* ---- verification: slots + tray ---- */
+.slots{display:flex;gap:10px;margin-bottom:22px}
+.slot{flex:1;background:var(--surface);border:1.5px dashed var(--border);border-radius:var(--r-row);
+  padding:14px 10px;text-align:center;min-height:78px;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:6px;transition:all .18s}
+.slot.hot{border-color:var(--accent);background:rgba(123,92,255,.08);transform:scale(1.03)}
+.slot.filled{border-style:solid;border-color:var(--accent);background:rgba(123,92,255,.08);cursor:pointer}
+.slot.ok{border-color:var(--green);background:rgba(0,255,176,.08)}
+.slot.bad{border-color:var(--red);background:rgba(255,107,107,.08)}
+.slot-n{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.slot-w{font-family:'Rajdhani',sans-serif;font-weight:700;font-size:17px;color:#fff;min-height:22px}
+.slot.ok .slot-w{color:var(--green)} .slot.bad .slot-w{color:var(--red)}
+
+.tray{display:flex;flex-wrap:wrap;gap:7px;background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--r-card);padding:14px;min-height:60px}
+.chip{background:var(--surface2);border:1px solid var(--border);border-radius:999px;
+  padding:9px 15px;font-family:inherit;font-size:13.5px;font-weight:600;color:var(--text);
+  cursor:grab;touch-action:none;user-select:none;transition:transform .12s,opacity .18s,border-color .18s}
+.chip.sel{border-color:var(--accent);background:rgba(123,92,255,.14);color:var(--accent)}
+.chip.used{opacity:0;pointer-events:none;width:0;padding:0;margin:0;border:0;overflow:hidden}
+.dragghost{position:fixed;z-index:999;pointer-events:none;background:rgba(123,92,255,.9);
+  border:1px solid var(--accent);border-radius:999px;padding:9px 15px;font-size:13.5px;
+  font-weight:600;color:#fff;box-shadow:0 8px 26px rgba(0,0,0,.5);transform:translate(-50%,-50%)}
+.hint{font-size:12px;color:var(--muted);text-align:center;margin-top:12px;line-height:1.6}
+
+.addr{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-card);
+  padding:18px;margin-bottom:14px;position:relative;overflow:hidden}
+.addr::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent,var(--green),transparent);opacity:.5}
+.addr code{display:block;font-family:ui-monospace,monospace;font-size:12.5px;color:var(--green);
+  word-break:break-all;line-height:1.6}
+.blob{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-row);
+  padding:14px;font-family:ui-monospace,monospace;font-size:10.5px;color:var(--muted);
+  word-break:break-all;line-height:1.55;max-height:110px;overflow:auto;margin-bottom:14px}
+
+.spin{width:20px;height:20px;border:2px solid rgba(123,92,255,.25);border-top-color:var(--accent);
+  border-radius:50%;animation:sp .7s linear infinite;display:inline-block;vertical-align:-4px;margin-right:8px}
+@keyframes sp{to{transform:rotate(360deg)}}
+.err{font-size:13px;color:var(--red);margin-top:12px;line-height:1.6}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="orb"></div>
+
+<!-- ================= WELCOME ================= -->
+<section class="step on intro" id="st-welcome">
+  <div class="grow" style="display:flex;flex-direction:column;justify-content:center">
+
+    <div class="logowrap">
+    <svg class="logo" viewBox="0 0 200 200" aria-label="Frontier">
+      <defs>
+        <linearGradient id="lz" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%"  stop-color="#E3D4FF"/>
+          <stop offset="55%" stop-color="#A98BFF"/>
+          <stop offset="100%" stop-color="#7B5CFF"/>
+        </linearGradient>
+        <linearGradient id="dk" x1="1" y1="0" x2="0" y2="1">
+          <stop offset="0%"  stop-color="#7B5CFF"/>
+          <stop offset="60%" stop-color="#5B34E0"/>
+          <stop offset="100%" stop-color="#3B1FCC"/>
+        </linearGradient>
+        <linearGradient id="rg" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%"  stop-color="#C9B4FF"/>
+          <stop offset="50%" stop-color="#7B5CFF"/>
+          <stop offset="100%" stop-color="#4526C9"/>
+        </linearGradient>
+        <radialGradient id="sp">
+          <stop offset="0%"   stop-color="#fff"/>
+          <stop offset="45%"  stop-color="#C9B4FF"/>
+          <stop offset="100%" stop-color="#7B5CFF" stop-opacity="0"/>
+        </radialGradient>
+      </defs>
+
+      <!-- broken ring: four arcs, gaps on the diagonals -->
+      <circle id="ring" cx="100" cy="100" r="88" fill="none" stroke="url(#rg)"
+              stroke-width="7" stroke-linecap="round"
+              stroke-dasharray="108 30" transform="rotate(-45 100 100)"/>
+
+      <!-- faceted four point star: two triangles per arm -->
+      <g id="star">
+        <path fill="url(#lz)" d="M100 16 82 82 100 100Z"/>
+        <path fill="url(#dk)" d="M100 16 118 82 100 100Z"/>
+        <path fill="url(#dk)" d="M184 100 118 82 100 100Z"/>
+        <path fill="url(#lz)" d="M184 100 118 118 100 100Z"/>
+        <path fill="url(#lz)" d="M100 184 118 118 100 100Z"/>
+        <path fill="url(#dk)" d="M100 184 82 118 100 100Z"/>
+        <path fill="url(#dk)" d="M16 100 82 118 100 100Z"/>
+        <path fill="url(#lz)" d="M16 100 82 82 100 100Z"/>
+      </g>
+
+      <circle id="spark" cx="100" cy="100" r="26" fill="url(#sp)"/>
+    </svg>
+    </div>
+
+    <div class="wordmark">FRONTIER</div>
+    <div class="tagline">Terra Classic Wallet</div>
+    <p class="lede" style="text-align:center">Your keys stay on this device, so nobody else can move your funds and nobody else can recover them for you.</p>
+  </div>
+
+  <div class="btns">
+    <button class="btn solid" data-go="setup">Create a new wallet</button>
+    <button class="btn" data-go="import">Import a recovery phrase</button>
+    <button class="btn quiet" data-go="watch">Watch an address, read only</button>
+  </div>
+</section>
+
+<!-- ================= SETUP ================= -->
+<section class="step" id="st-setup">
+  <div class="bar">
+    <div class="back" data-go="welcome"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></div>
+    <div class="dots"><i class="dot on"></i><i class="dot"></i><i class="dot"></i></div>
+  </div>
+  <h1>Set up your wallet</h1>
+  <p class="lede">Pick a phrase length, then a passphrase that encrypts the keys on this device.</p>
+
+  <label>Recovery phrase length</label>
+  <div class="seg" id="seg">
+    <button class="on" data-len="128">12 words</button>
+    <button data-len="256">24 words</button>
+  </div>
+  <p class="lede" style="margin-top:-8px;font-size:12.5px" id="len-note">12 words is 128 bits of entropy. Nothing will brute force that, and it is far easier to write down without a mistake.</p>
+
+  <div class="field">
+    <label>Passphrase</label>
+    <input type="password" id="p1" autocomplete="new-password" placeholder="At least 12 characters">
+    <div class="meter"><i id="mfill"></i></div>
+    <div class="meter-txt" id="mtxt"></div>
+  </div>
+  <div class="field">
+    <label>Repeat it</label>
+    <input type="password" id="p2" autocomplete="new-password">
+    <div class="meter-txt" id="mmatch"></div>
+  </div>
+
+  <div class="warn red">
+    <svg viewBox="0 0 24 24"><path d="M12 9v4m0 4h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+    <p><b>There is no reset.</b> If you forget this passphrase, the recovery phrase on the next screen is the only way back in.</p>
+  </div>
+
+  <div class="grow"></div>
+  <button class="btn solid" id="btn-setup" disabled>Continue</button>
+</section>
+
+<!-- ================= SEED ================= -->
+<section class="step" id="st-seed">
+  <div class="bar">
+    <div class="dots"><i class="dot on"></i><i class="dot on"></i><i class="dot"></i></div>
+  </div>
+  <h1>Your recovery phrase</h1>
+  <p class="lede" id="seed-lede">These words ARE your wallet. Write them down in order. Anyone who reads them owns your funds.</p>
+
+  <div class="seedwrap">
+    <div class="seed" id="seedgrid"></div>
+    <div class="veil" id="veil">
+      <div>
+        <svg viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+        <p>Tap to reveal</p>
+        <span>Make sure nobody is looking at your screen</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="copyrow">
+    <button class="copybtn" id="copy">
+      <svg viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+      <span>Copy phrase</span>
+    </button>
+  </div>
+
+  <div class="warn">
+    <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18"/></svg>
+    <p>Telegram cannot block screenshots in a Mini App, and the clipboard is readable by other apps. <b>Paper is safer than both.</b></p>
+  </div>
+
+  <div class="check" id="chk">
+    <span class="box"><svg viewBox="0 0 24 24"><path d="m5 13 4 4L19 7"/></svg></span>
+    <p>I have written the phrase down and stored it somewhere safe.</p>
+  </div>
+
+  <div class="grow"></div>
+  <button class="btn solid" id="btn-seed" disabled>Continue</button>
+</section>
+
+<!-- ================= VERIFY ================= -->
+<section class="step" id="st-verify">
+  <div class="bar">
+    <div class="back" data-go="seed"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></div>
+    <div class="dots"><i class="dot on"></i><i class="dot on"></i><i class="dot on"></i></div>
+  </div>
+  <h1>Check your copy</h1>
+  <p class="lede">Drag the two matching words from below into their places. Two of the ten belong to your phrase.</p>
+
+  <div class="slots" id="slots"></div>
+  <div class="tray" id="tray"></div>
+  <p class="hint">Drag a word, or tap it and then tap a slot. Tap a filled slot to send the word back.</p>
+
+  <div class="grow"></div>
+  <button class="btn solid" id="btn-verify" disabled>Create wallet</button>
+</section>
+
+<!-- ================= IMPORT ================= -->
+<section class="step" id="st-import">
+  <div class="bar">
+    <div class="back" data-go="welcome"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></div>
+  </div>
+  <h1>Restore a wallet</h1>
+  <p class="lede">Enter your 12 or 24 word recovery phrase, separated by spaces.</p>
+  <div class="field">
+    <label>Recovery phrase</label>
+    <textarea id="imp" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="word one two three"></textarea>
+    <div class="meter-txt" id="imptxt"></div>
+  </div>
+  <div class="warn red">
+    <svg viewBox="0 0 24 24"><path d="M12 9v4m0 4h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+    <p>Never enter a phrase somebody gave you. <b>A phrase you did not create is a trap</b>, and whatever you send there will be taken.</p>
+  </div>
+  <div class="field">
+    <label>Passphrase for this device</label>
+    <input type="password" id="ip1" autocomplete="new-password" placeholder="At least 12 characters">
+  </div>
+  <div class="grow"></div>
+  <button class="btn solid" id="btn-import" disabled>Restore</button>
+</section>
+
+<!-- ================= WATCH ================= -->
+<section class="step" id="st-watch">
+  <div class="bar">
+    <div class="back" data-go="welcome"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></div>
+  </div>
+  <h1>Watch an address</h1>
+  <p class="lede">See balances, staking and history without giving Frontier any keys. Nothing can be sent or signed in this mode, and you can add a key later.</p>
+
+  <div class="field">
+    <label>Terra Classic address</label>
+    <textarea id="wa" autocomplete="off" autocapitalize="off" spellcheck="false" style="min-height:76px" placeholder="terra1..."></textarea>
+    <div class="meter-txt" id="watxt"></div>
+  </div>
+
+  <div class="warn">
+    <svg viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+    <p>Use this to try Frontier before trusting it with anything. <b>Never paste a recovery phrase into an app you are still deciding about</b>, including this one.</p>
+  </div>
+
+  <div class="grow"></div>
+  <button class="btn solid" id="btn-watch" disabled>Start watching</button>
+</section>
+
+<!-- ================= WATCHING ================= -->
+<section class="step" id="st-watching">
+  <div class="bar"><div class="dots"></div></div>
+  <h1>Watching</h1>
+  <p class="lede">Frontier holds no keys for this address. Sending and staking stay locked until you import the recovery phrase.</p>
+  <div class="addr">
+    <label>Address</label>
+    <code id="watch-out">...</code>
+  </div>
+  <div class="grow"></div>
+  <button class="btn" data-go="import">Import the recovery phrase</button>
+  <button class="btn quiet" data-go="welcome">Start over</button>
+</section>
+
+<!-- ================= DONE ================= -->
+<section class="step" id="st-done">
+  <div class="bar"><div class="dots"></div></div>
+  <h1>Wallet ready</h1>
+  <p class="lede">Derived on this device at <code style="font-family:ui-monospace,monospace;font-size:13px;color:var(--accent2)">m/44'/330'/0'/0/0</code>, the Terra path. Check the address against Station to confirm the derivation matches.</p>
+
+  <div class="addr">
+    <label>Your address</label>
+    <code id="addr-out">...</code>
+  </div>
+
+  <label>Encrypted blob that would go to Telegram CloudStorage</label>
+  <div class="blob" id="blob-out">...</div>
+  <p class="lede" style="font-size:12.5px" id="kdf-note"></p>
+
+  <div class="grow"></div>
+  <button class="btn solid" data-go="welcome">Start over</button>
+</section>
+
+<script type="module">
+/* ------------------------------------------------------------------
+   PROTOTYPE. Real BIP39, real WebCrypto, real address derivation, so
+   the address can be checked against Station. Nothing is persisted:
+   the encrypted blob is displayed instead of stored, because this file
+   is for review. Do not fund an address created here.
+
+   For production replace PBKDF2 with Argon2id (hash-wasm). PBKDF2 is
+   what WebCrypto offers natively but it is much weaker against GPU
+   cracking, which is the threat when an encrypted blob sits on a
+   server.
+------------------------------------------------------------------- */
+let bip39, bip32, base, ripe, sha;
+let MNEMONIC = null, PASS = null, BITS = 128;
+let SLOTS = [];               // [{pos, word, filled}]
+let SEL = null;               // tapped chip awaiting a slot
+
+const $  = s => document.querySelector(s);
+const $$ = s => Array.from(document.querySelectorAll(s));
+const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
+if (tg) { tg.ready(); tg.expand(); }
+const tap  = () => { if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light'); };
+const buzz = k => { if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred(k); };
+
+/* the webview keeps focus after a tap outside, so drop it by hand */
+function dropKeyboard(){
+  const a = document.activeElement;
+  if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA')) a.blur();
+  if (tg && typeof tg.hideKeyboard === 'function') { try { tg.hideKeyboard(); } catch (e) {} }
+}
+document.addEventListener('pointerdown', e => {
+  if (e.target.closest('input, textarea, .chip, .slot')) return;
+  dropKeyboard();
+}, true);
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && e.target.tagName === 'INPUT') { e.preventDefault(); dropKeyboard(); }
+});
+
+function go(name){
+  tap();
+  // the intro plays once; coming back to welcome later must be instant
+  $('#st-welcome').classList.remove('intro');
+  $$('.step').forEach(s => s.classList.remove('on'));
+  $('#st-' + name).classList.add('on');
+  window.scrollTo(0,0);
+}
+$$('[data-go]').forEach(el => el.addEventListener('click', () => go(el.dataset.go)));
+
+async function libs(){
+  if (bip39) return;
+  const timeout = new Promise((_, rej) =>
+    setTimeout(() => rej(new Error('crypto libraries did not load, check the connection')), 15000));
+  const load = Promise.all([
+    import('https://esm.sh/@scure/bip39@1.3.0'),
+    import('https://esm.sh/@scure/bip39@1.3.0/wordlists/english'),
+    import('https://esm.sh/@scure/bip32@1.4.0'),
+    import('https://esm.sh/@scure/base@1.1.6'),
+    import('https://esm.sh/@noble/hashes@1.4.0/ripemd160'),
+    import('https://esm.sh/@noble/hashes@1.4.0/sha256')
+  ]);
+  const [b39, wl, b32, b, r, s] = await Promise.race([load, timeout]);
+  bip39 = { ...b39, wordlist: wl.wordlist };
+  bip32 = b32; base = b; ripe = r; sha = s;
+}
+
+/* ---------------- length toggle ---------------- */
+$('#seg').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  tap();
+  $$('#seg button').forEach(x => x.classList.remove('on'));
+  b.classList.add('on');
+  BITS = +b.dataset.len;
+  $('#len-note').textContent = BITS === 128
+    ? '12 words is 128 bits of entropy. Nothing will brute force that, and it is far easier to write down without a mistake.'
+    : '24 words is 256 bits. No practical gain over 12 against brute force, but some people prefer it and some hardware wallets expect it.';
+});
+
+/* ---------------- passphrase ---------------- */
+function strength(p){
+  if (!p) return { score:0, txt:'' };
+  let pool = 0;
+  if (/[a-z]/.test(p)) pool += 26;
+  if (/[A-Z]/.test(p)) pool += 26;
+  if (/[0-9]/.test(p)) pool += 10;
+  if (/[^a-zA-Z0-9]/.test(p)) pool += 33;
+  const bits = Math.round(p.length * Math.log2(pool || 1));
+  if (bits < 45)      return { score:25,  txt:'Weak, crackable offline in hours - about ' + bits + ' bits' };
+  if (bits < 60)      return { score:50,  txt:'Fair - about ' + bits + ' bits' };
+  if (bits < 80)      return { score:75,  txt:'Good - about ' + bits + ' bits' };
+  return                     { score:100, txt:'Strong - about ' + bits + ' bits' };
+}
+function checkPass(){
+  const a = $('#p1').value, b = $('#p2').value, s = strength(a);
+  $('#mfill').style.width = s.score + '%';
+  $('#mfill').style.background = s.score <= 25 ? 'var(--red)' : s.score <= 50 ? 'var(--gold)' : 'var(--green)';
+  $('#mtxt').textContent = s.txt;
+  const match = a.length > 0 && a === b;
+  $('#mmatch').textContent = b.length === 0 ? '' : (match ? '' : 'The two do not match');
+  $('#mmatch').style.color = 'var(--red)';
+  $('#btn-setup').disabled = !(a.length >= 12 && match);
+}
+$('#p1').addEventListener('input', checkPass);
+$('#p2').addEventListener('input', checkPass);
+
+/* ---------------- generate ---------------- */
+$('#btn-setup').addEventListener('click', async () => {
+  tap();
+  PASS = $('#p1').value;
+  const b = $('#btn-setup');
+  b.disabled = true; b.innerHTML = '<span class="spin"></span>Generating';
+  try {
+    await libs();
+    MNEMONIC = bip39.generateMnemonic(bip39.wordlist, BITS);
+    renderSeed();
+    go('seed');
+  } catch (e) {
+    b.insertAdjacentHTML('afterend', '<p class="err">Could not load the crypto libraries. Check the connection and reload.</p>');
+  } finally { b.disabled = false; b.textContent = 'Continue'; }
+});
+
+function renderSeed(){
+  const words = MNEMONIC.split(' ');
+  const g = $('#seedgrid');
+  g.className = 'seed' + (words.length > 12 ? ' long' : '');
+  g.innerHTML = words.map((w,i) => '<div class="word"><i>' + (i+1) + '</i><b>' + w + '</b></div>').join('');
+  $('#seed-lede').textContent = 'These ' + words.length +
+    ' words ARE your wallet. Write them down in order. Anyone who reads them owns your funds.';
+  $('#veil').classList.remove('gone');
+  $('#chk').classList.remove('on');
+  $('#btn-seed').disabled = true;
+  const c = $('#copy'); c.classList.remove('done'); c.querySelector('span').textContent = 'Copy phrase';
+}
+
+$('#veil').addEventListener('click', () => { tap(); $('#veil').classList.add('gone'); });
+
+$('#copy').addEventListener('click', async () => {
+  tap();
+  try { await navigator.clipboard.writeText(MNEMONIC); }
+  catch (e) {
+    const t = document.createElement('textarea');
+    t.value = MNEMONIC; document.body.appendChild(t); t.select();
+    document.execCommand('copy'); t.remove();
+  }
+  const c = $('#copy');
+  c.classList.add('done');
+  c.querySelector('span').textContent = 'Copied - paste it somewhere safe now';
+  buzz('success');
+});
+
+$('#chk').addEventListener('click', () => {
+  tap();
+  const on = $('#chk').classList.toggle('on');
+  $('#btn-seed').disabled = !on || !$('#veil').classList.contains('gone');
+});
+
+/* ---------------- verification ---------------- */
+$('#btn-seed').addEventListener('click', () => { buildVerify(); go('verify'); });
+
+function buildVerify(){
+  const words = MNEMONIC.split(' ');
+  const n = words.length;
+
+  // two distinct positions, kept apart so they are not adjacent
+  let a = 1 + Math.floor(Math.random() * (n - 1));
+  let b = 1 + Math.floor(Math.random() * (n - 1));
+  let guard = 0;
+  while (Math.abs(a - b) < Math.max(2, Math.floor(n / 4)) && guard++ < 60) {
+    b = 1 + Math.floor(Math.random() * (n - 1));
+  }
+  const pos = [a, b].sort((x, y) => x - y);
+  SLOTS = pos.map(p => ({ pos: p, answer: words[p - 1], word: null }));
+
+  $('#slots').innerHTML = SLOTS.map((s, i) =>
+    '<div class="slot" data-slot="' + i + '">' +
+      '<span class="slot-n">Word ' + s.pos + '</span>' +
+      '<span class="slot-w"></span>' +
+    '</div>').join('');
+
+  // ten chips: the two answers plus eight decoys
+  const chips = [SLOTS[0].answer, SLOTS[1].answer];
+  while (chips.length < 10) {
+    const w = bip39.wordlist[Math.floor(Math.random() * bip39.wordlist.length)];
+    if (!chips.includes(w) && !words.includes(w)) chips.push(w);
+  }
+  chips.sort(() => Math.random() - 0.5);
+  $('#tray').innerHTML = chips.map(w => '<div class="chip" data-w="' + w + '">' + w + '</div>').join('');
+
+  SEL = null;
+  $('#btn-verify').disabled = true;
+  wireDrag();
+}
+
+function place(slotIdx, word, chipEl){
+  const s = SLOTS[slotIdx];
+  if (s.word) return false;              // occupied
+  s.word = word; s.chip = chipEl;
+  const el = $('.slot[data-slot="' + slotIdx + '"]');
+  el.classList.add('filled');
+  el.querySelector('.slot-w').textContent = word;
+  chipEl.classList.add('used');
+  grade();
+  return true;
+}
+
+function unplace(slotIdx){
+  const s = SLOTS[slotIdx];
+  if (!s.word) return;
+  s.chip.classList.remove('used');
+  s.word = null; s.chip = null;
+  const el = $('.slot[data-slot="' + slotIdx + '"]');
+  el.className = 'slot';
+  el.querySelector('.slot-w').textContent = '';
+  grade();
+}
+
+function grade(){
+  const done = SLOTS.every(s => s.word);
+  if (!done) { $('#btn-verify').disabled = true; return; }
+  let all = true;
+  SLOTS.forEach((s, i) => {
+    const el = $('.slot[data-slot="' + i + '"]');
+    const ok = s.word === s.answer;
+    el.classList.toggle('ok', ok);
+    el.classList.toggle('bad', !ok);
+    if (!ok) all = false;
+  });
+  buzz(all ? 'success' : 'error');
+  $('#btn-verify').disabled = !all;
+}
+
+function wireDrag(){
+  // tap to select, tap a slot to drop
+  $$('#tray .chip').forEach(chip => {
+    let sx = 0, sy = 0, moved = false, ghost = null, hot = null;
+
+    chip.addEventListener('pointerdown', e => {
+      if (chip.classList.contains('used')) return;
+      sx = e.clientX; sy = e.clientY; moved = false;
+      chip.setPointerCapture(e.pointerId);
+    });
+
+    chip.addEventListener('pointermove', e => {
+      if (!chip.hasPointerCapture(e.pointerId)) return;
+      const dx = e.clientX - sx, dy = e.clientY - sy;
+      if (!moved && Math.hypot(dx, dy) < 7) return;
+      if (!moved) {
+        moved = true;
+        ghost = document.createElement('div');
+        ghost.className = 'dragghost';
+        ghost.textContent = chip.dataset.w;
+        document.body.appendChild(ghost);
+        chip.style.opacity = '.25';
+      }
+      ghost.style.left = e.clientX + 'px';
+      ghost.style.top  = e.clientY + 'px';
+      const under = document.elementFromPoint(e.clientX, e.clientY);
+      const slot = under && under.closest ? under.closest('.slot') : null;
+      if (hot && hot !== slot) hot.classList.remove('hot');
+      if (slot && !SLOTS[+slot.dataset.slot].word) { slot.classList.add('hot'); hot = slot; }
+      else hot = null;
+    });
+
+    const finish = e => {
+      if (!chip.hasPointerCapture || !moved) {
+        if (!moved) {                      // treated as a tap
+          tap();
+          if (SEL === chip) { chip.classList.remove('sel'); SEL = null; }
+          else {
+            if (SEL) SEL.classList.remove('sel');
+            SEL = chip; chip.classList.add('sel');
+          }
+        }
+      }
+      if (moved) {
+        if (ghost) { ghost.remove(); ghost = null; }
+        chip.style.opacity = '';
+        if (hot) {
+          hot.classList.remove('hot');
+          place(+hot.dataset.slot, chip.dataset.w, chip);
+          tap();
+        }
+        hot = null; moved = false;
+      }
+    };
+    chip.addEventListener('pointerup', finish);
+    chip.addEventListener('pointercancel', finish);
+  });
+
+  $$('#slots .slot').forEach(el => {
+    el.addEventListener('click', () => {
+      const i = +el.dataset.slot;
+      if (SLOTS[i].word) { tap(); unplace(i); return; }
+      if (SEL) { place(i, SEL.dataset.w, SEL); SEL.classList.remove('sel'); SEL = null; tap(); }
+    });
+  });
+}
+
+/* ---------------- crypto ---------------- */
+const ITER = 600000;
+const b64 = u8 => btoa(String.fromCharCode(...u8));
+
+async function encryptSeed(mnemonic, pass){
+  const enc  = new TextEncoder();
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv   = crypto.getRandomValues(new Uint8Array(12));
+  const km   = await crypto.subtle.importKey('raw', enc.encode(pass), 'PBKDF2', false, ['deriveKey']);
+  const key  = await crypto.subtle.deriveKey(
+    { name:'PBKDF2', salt, iterations:ITER, hash:'SHA-256' },
+    km, { name:'AES-GCM', length:256 }, false, ['encrypt']);
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name:'AES-GCM', iv }, key, enc.encode(mnemonic)));
+  return { v:1, kdf:'pbkdf2-sha256', iter:ITER, salt:b64(salt), iv:b64(iv), ct:b64(ct) };
+}
+
+async function deriveAddress(mnemonic){
+  const seed = await bip39.mnemonicToSeed(mnemonic);
+  const node = bip32.HDKey.fromMasterSeed(seed).derive("m/44'/330'/0'/0/0");
+  const rip  = ripe.ripemd160(sha.sha256(node.publicKey));
+  return base.bech32.encode('terra', base.bech32.toWords(rip));
+}
+
+async function finish(mnemonic){
+  const t0 = performance.now();
+  const [addr, blob] = await Promise.all([deriveAddress(mnemonic), encryptSeed(mnemonic, PASS)]);
+  const ms = Math.round(performance.now() - t0);
+  $('#addr-out').textContent = addr;
+  $('#blob-out').textContent = JSON.stringify(blob);
+  $('#kdf-note').textContent = 'Key derivation took ' + ms + ' ms here with ' +
+    ITER.toLocaleString() + ' PBKDF2 iterations. That delay repeats on every unlock, so pick the number against the slowest phone you care about, not this one.';
+  go('done');
+}
+
+$('#btn-verify').addEventListener('click', async () => {
+  const b = $('#btn-verify');
+  b.disabled = true; b.innerHTML = '<span class="spin"></span>Encrypting';
+  try { await finish(MNEMONIC); }
+  catch (e) { b.textContent = 'Something went wrong'; }
+  finally { b.innerHTML = 'Create wallet'; }
+});
+
+/* ---------------- import ---------------- */
+async function checkImport(){
+  const v = $('#imp').value.trim().toLowerCase().replace(/\s+/g,' ');
+  const n = v ? v.split(' ').length : 0;
+  const t = $('#imptxt');
+  const passOk = $('#ip1').value.length >= 12;
+  if (!n) { t.textContent = ''; $('#btn-import').disabled = true; return; }
+  if (n !== 12 && n !== 24) {
+    t.textContent = n + ' words, needs 12 or 24';
+    t.style.color = 'var(--muted)';
+    $('#btn-import').disabled = true; return;
+  }
+  await libs();
+  const ok = bip39.validateMnemonic(v, bip39.wordlist);
+  t.textContent = ok ? 'Valid phrase' : 'Checksum failed, a word is wrong or out of order';
+  t.style.color = ok ? 'var(--green)' : 'var(--red)';
+  $('#btn-import').disabled = !(ok && passOk);
+}
+$('#imp').addEventListener('input', checkImport);
+$('#ip1').addEventListener('input', checkImport);
+
+/* ---------------- watch only ---------------- */
+async function checkWatch(){
+  const v = $('#wa').value.trim().toLowerCase();
+  const t = $('#watxt');
+  if (!v) { t.textContent = ''; $('#btn-watch').disabled = true; return; }
+  if (!/^terra1[02-9ac-hj-np-z]{38,58}$/.test(v)) {
+    t.textContent = 'Not a Terra address yet';
+    t.style.color = 'var(--muted)';
+    $('#btn-watch').disabled = true; return;
+  }
+  await libs();
+  let ok = false, kind = '';
+  try {
+    const d = base.bech32.decode(v);
+    const bytes = base.bech32.fromWords(d.words);
+    ok = d.prefix === 'terra' && (bytes.length === 20 || bytes.length === 32);
+    kind = bytes.length === 32 ? 'Valid, this is a contract address' : 'Valid address';
+  } catch (e) { ok = false; }
+  t.textContent = ok ? kind : 'Checksum failed, a character is wrong';
+  t.style.color = ok ? 'var(--green)' : 'var(--red)';
+  $('#btn-watch').disabled = !ok;
+}
+$('#wa').addEventListener('input', checkWatch);
+
+$('#btn-watch').addEventListener('click', () => {
+  tap();
+  $('#watch-out').textContent = $('#wa').value.trim().toLowerCase();
+  go('watching');
+});
+
+$('#btn-import').addEventListener('click', async () => {
+  const b = $('#btn-import'), t = $('#imptxt');
+  dropKeyboard();
+  b.disabled = true; b.innerHTML = '<span class="spin"></span>Restoring';
+  try {
+    await libs();
+    MNEMONIC = $('#imp').value.trim().toLowerCase().replace(/\s+/g,' ');
+    PASS = $('#ip1').value;
+    if (!bip39.validateMnemonic(MNEMONIC, bip39.wordlist)) throw new Error('checksum');
+    if (PASS.length < 12) throw new Error('passphrase too short');
+    await finish(MNEMONIC);
+    b.innerHTML = 'Restore';                 // only reset on the way out
+  } catch (e) {
+    b.innerHTML = 'Restore';
+    b.disabled = false;
+    t.textContent = 'Could not restore: ' + (e && e.message ? e.message : 'unknown error');
+    t.style.color = 'var(--red)';
+    console.error('[import]', e);
+  }
+});
+</script>
+</body>
+</html>
