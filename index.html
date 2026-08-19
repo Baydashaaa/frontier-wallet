@@ -955,13 +955,27 @@ $('#btn-verify').addEventListener('click', async () => {
 
 /* ---------------- chain reads ---------------- */
 const LCD = 'https://terra-classic-lcd.publicnode.com';
-// TERRA is a CW20 too but its contract address is not confirmed yet, so it is
-// left out rather than guessed at
+// only addresses here - symbol and decimals are read from each contract, so
+// adding a token never means editing two places
 const CW20 = [
-  { sym:'TCO', dec:6, addr:'terra1566znlxwke0kp9jkhe6qgapsmcfdmc7k9czh380tlx80va8zlsgqzvjtfp' }
+  'terra1566znlxwke0kp9jkhe6qgapsmcfdmc7k9czh380tlx80va8zlsgqzvjtfp',
+  'terra1vhgq25vwuhdhn9xjll0rhl2s67jzw78a4g2t78y5kz89q9lsdskq2pxcj2',
+  'terra1ex0hjv3wurhj4wgup4jzlzaqj4av6xqd8le4etml7rg9rs207y4s8cdvrp',
+  'terra12f3f5fzfzxckc0qlv3rmwwkjfhzevpwmx77345n0zuu2678vxf0sm6vvcw',
+  'terra1mm8tdp40r2slzwqxk8jsz66ayc4zp69muxeateq37x2xquttzsaqy7275a',
+  'terra1ljyvgw50u67r3ep7pp7qexgnsgy96fl57q0suut325ehed7eal8qwdtdq4'
 ];
 const NATIVE = { uluna:{sym:'LUNC',dec:6}, uusd:{sym:'USTC',dec:6} };
 const COLOR  = { LUNC:'#7B5CFF', USTC:'#00FFB0', TCO:'#00D4FF', TERRA:'#E8C840' };
+// a stable colour per symbol so tokens do not change appearance between loads
+function hue(sym){
+  let h = 0;
+  for (const c of sym) h = (h * 31 + c.charCodeAt(0)) % 360;
+  return 'hsl(' + h + ',62%,58%)';
+}
+const swatch = sym => COLOR[sym] || hue(sym);
+const smart = (addr, msg) =>
+  getJSON(LCD + '/cosmwasm/wasm/v1/contract/' + addr + '/smart/' + btoa(JSON.stringify(msg)));
 
 async function getJSON(url, ms = 12000){
   const c = new AbortController();
@@ -990,36 +1004,60 @@ async function loadBalances(addr){
       getJSON(LCD + '/cosmos/bank/v1beta1/balances/' + addr),
       prices()
     ]);
-    const held = {};
-    (bank.balances || []).forEach(b => {
-      const meta = NATIVE[b.denom];
-      if (meta) held[meta.sym] = amt(b.amount, meta.dec);
-    });
-    for (const t of CW20) {
-      try {
-        const q = btoa(JSON.stringify({ balance:{ address: addr } }));
-        const r = await getJSON(LCD + '/cosmwasm/wasm/v1/contract/' + t.addr + '/smart/' + q);
-        held[t.sym] = amt(r.data && r.data.balance, t.dec);
-      } catch (e) { held[t.sym] = 0; }
+
+    const found = [];
+
+    // every native denom the address actually holds, ibc ones resolved to
+    // whatever they were before they crossed the bridge
+    for (const b of (bank.balances || [])) {
+      if (NATIVE[b.denom]) {
+        const m = NATIVE[b.denom];
+        found.push({ sym: m.sym, v: amt(b.amount, m.dec), note: '' });
+      } else if (b.denom.startsWith('ibc/')) {
+        let sym = 'IBC', note = b.denom.slice(4, 12) + '\u2026';
+        try {
+          const tr = await getJSON(LCD + '/ibc/apps/transfer/v1/denom_traces/' + b.denom.slice(4));
+          const base = tr.denom_trace.base_denom;
+          sym = (base.startsWith('u') ? base.slice(1) : base).toUpperCase();
+          note = tr.denom_trace.path;
+        } catch (e) {}
+        found.push({ sym, v: amt(b.amount, 6), note });
+      } else {
+        found.push({ sym: b.denom.toUpperCase(), v: amt(b.amount, 6), note: '' });
+      }
     }
 
-    const order = ['LUNC','USTC','TCO'];
+    // cw20: ask each contract who it is, then what we hold
+    await Promise.all(CW20.map(async c => {
+      try {
+        const [info, bal] = await Promise.all([
+          smart(c, { token_info: {} }),
+          smart(c, { balance: { address: addr } })
+        ]);
+        const d = info.data;
+        const v = amt(bal.data && bal.data.balance, d.decimals);
+        if (v > 0) found.push({ sym: d.symbol, v, note: d.name });
+      } catch (e) { /* a dead contract must not take the screen down */ }
+    }));
+
+    found.sort((a, b) => b.v - a.v);
+
     let total = 0;
-    list.innerHTML = order.map(sym => {
-      const v = held[sym] || 0;
-      const p = px[sym];
-      const fiat = p ? v * p : null;
+    list.innerHTML = found.length ? found.map(t => {
+      const p = px[t.sym];
+      const fiat = p ? t.v * p : null;
       if (fiat) total += fiat;
       return '<li class="row">' +
-        '<span class="sym" style="background:' + COLOR[sym] + '">' + sym[0] + '</span>' +
-        '<div class="row-main"><div class="row-name">' + sym + '</div>' +
-        '<div class="row-amt">' + fmt(v) + '</div></div>' +
+        '<span class="sym" style="background:' + swatch(t.sym) + '">' + t.sym[0] + '</span>' +
+        '<div class="row-main"><div class="row-name">' + t.sym + '</div>' +
+        '<div class="row-amt">' + fmt(t.v) + (t.note ? ' \u00b7 ' + t.note : '') + '</div></div>' +
         '<div class="row-val"><div class="row-fiat">' + (fiat !== null ? usd(fiat) : '\u2014') + '</div>' +
-        '<div class="row-sub">' + (fiat !== null ? '' : 'no market') + '</div></div></li>';
-    }).join('');
-    $('#tok-count').textContent = order.length;
+        '<div class="row-sub">' + (fiat !== null ? '' : 'no price') + '</div></div></li>';
+    }).join('') : '<li class="empty">This address holds nothing yet.</li>';
+
+    $('#tok-count').textContent = found.length || '';
     $('#bal-total').textContent = usd(total);
-    $('#home-note').textContent = 'TCO is still on its bonding curve, so it has no price. The balance is real, the value is not shown.';
+    $('#home-note').textContent = 'Only LUNC and USTC have a price feed. Everything else shows its balance without a value rather than a made up one.';
   } catch (e) {
     list.innerHTML = '<li class="empty">Could not reach the chain: ' + (e.message || e) + '</li>';
     $('#bal-total').textContent = '\u2014';
