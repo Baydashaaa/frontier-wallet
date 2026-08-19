@@ -218,6 +218,11 @@ textarea{resize:none;min-height:110px;line-height:1.8}
   border-radius:50%;animation:sp .7s linear infinite;display:inline-block;vertical-align:-4px;margin-right:8px}
 @keyframes sp{to{transform:rotate(360deg)}}
 .err{font-size:13px;color:var(--red);margin-top:12px;line-height:1.6}
+.crash{position:fixed;left:8px;right:8px;bottom:8px;z-index:9999;display:none;
+  background:rgba(255,107,107,.14);border:1px solid var(--red);border-radius:12px;
+  padding:12px 14px;font-family:ui-monospace,monospace;font-size:11px;color:#FFD9D9;
+  line-height:1.5;max-height:40vh;overflow:auto;word-break:break-word}
+.crash.on{display:block}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
@@ -442,6 +447,18 @@ let SLOTS = [];               // [{pos, word, filled}]
 let SEL = null;               // tapped chip awaiting a slot
 
 const $  = s => document.querySelector(s);
+
+/* no console inside a Mini App, so failures are printed on screen */
+const crash = document.createElement('div');
+crash.className = 'crash';
+document.body.appendChild(crash);
+function report(where, e){
+  const msg = e && e.stack ? e.stack : String(e);
+  crash.textContent = '[' + where + '] ' + msg;
+  crash.classList.add('on');
+}
+window.addEventListener('error', ev => report('error', ev.error || ev.message));
+window.addEventListener('unhandledrejection', ev => report('promise', ev.reason));
 const $$ = s => Array.from(document.querySelectorAll(s));
 const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
 if (tg) { tg.ready(); tg.expand(); }
