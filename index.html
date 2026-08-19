@@ -230,7 +230,9 @@ textarea{resize:none;min-height:110px;line-height:1.8}
 .store{display:inline-flex;align-items:center;gap:6px;font-size:10.5px;letter-spacing:.1em;
   text-transform:uppercase;color:var(--muted);background:var(--surface2);border:1px solid var(--border);
   border-radius:999px;padding:4px 11px;margin:0 auto 18px}
+.store{border-color:rgba(0,255,176,.35);background:rgba(0,255,176,.06)}
 .store b{color:var(--green);font-weight:700}
+.store.weak{border-color:rgba(232,200,64,.4);background:rgba(232,200,64,.07)}
 .store.weak b{color:var(--gold)}
 .crash{position:fixed;left:8px;right:8px;bottom:8px;z-index:9999;display:none;
   background:rgba(255,107,107,.14);border:1px solid var(--red);border-radius:12px;
@@ -519,7 +521,9 @@ function dropKeyboard(){
   if (tg && typeof tg.hideKeyboard === 'function') { try { tg.hideKeyboard(); } catch (e) {} }
 }
 document.addEventListener('pointerdown', e => {
-  if (e.target.closest('input, textarea, .chip, .slot')) return;
+  // .pinbox refocuses its hidden input on click, so blurring here made the
+  // keyboard close and immediately reopen
+  if (e.target.closest('input, textarea, .chip, .slot, .pinbox')) return;
   dropKeyboard();
 }, true);
 document.addEventListener('keydown', e => {
@@ -594,12 +598,16 @@ function checkPass(){
   $('#mmatch').style.color = 'var(--red)';
   $('#btn-setup').disabled = !(match && !weak);
 }
+function focusPin(sel){
+  const el = $(sel);
+  if (document.activeElement !== el) el.focus();
+}
 ['p1','p2'].forEach(id => {
   $('#' + id).addEventListener('input', checkPass);
-  $('#pinbox' + (id === 'p1' ? '1' : '2')).addEventListener('click', () => $('#' + id).focus());
+  $('#pinbox' + (id === 'p1' ? '1' : '2')).addEventListener('click', () => focusPin('#' + id));
 });
 dots('pinrow1', 0); dots('pinrow2', 0);
-$('#pinboxI').addEventListener('click', () => $('#ip1').focus());
+$('#pinboxI').addEventListener('click', () => focusPin('#ip1'));
 $('#ip1').addEventListener('input', () => dots('pinrowI', digitsOnly($('#ip1')).length));
 dots('pinrowI', 0);
 
@@ -874,17 +882,22 @@ const Store = (() => {
 
 const short = a => a.slice(0, 11) + '\u2026' + a.slice(-6);
 
+function showStore(){
+  const el = $('#store-kind');
+  if (!el) return;
+  const label = Store.kind === 'secure' ? 'device keychain'
+              : Store.kind === 'cloud'  ? 'telegram cloud'
+              : 'memory only, nothing is saved';
+  el.innerHTML = 'stored in <b>' + label + '</b>';
+  el.classList.toggle('weak', Store.kind !== 'secure');
+}
+
 async function saveWallet(addr, blob){
   SAVED = { addr, blob };          // without this, Lock right after setup had nothing to unlock
   $('#unlock-addr').textContent = short(addr);
   try { await Store.save(JSON.stringify({ addr, blob })); }
   catch (e) { report('save', e); }
-  const el = $('#store-kind');
-  const label = Store.kind === 'secure' ? 'device keychain'
-              : Store.kind === 'cloud'  ? 'telegram cloud'
-              : 'memory only';
-  el.innerHTML = 'stored in <b>' + label + '</b>';
-  el.classList.toggle('weak', Store.kind !== 'secure');
+  showStore();
 }
 
 async function decryptSeed(blob, pin){
@@ -901,7 +914,7 @@ async function decryptSeed(blob, pin){
 /* ---------------- unlock ---------------- */
 let tries = 0;
 
-$('#pinboxU').addEventListener('click', () => $('#pu').focus());
+$('#pinboxU').addEventListener('click', () => focusPin('#pu'));
 $('#pu').addEventListener('input', async () => {
   const v = digitsOnly($('#pu'));
   dots('pinrowU', v.length);
@@ -958,6 +971,7 @@ $('#btn-forget').addEventListener('click', async () => {
 
 /* ---------------- boot ---------------- */
 (async function boot(){
+  showStore();
   try {
     const raw = await Store.load();
     if (!raw) return;
