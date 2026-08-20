@@ -258,7 +258,8 @@ textarea{resize:none;min-height:110px;line-height:1.8}
   border-radius:var(--r-row);padding:12px 15px}
 .sym{display:grid;place-items:center;width:40px;height:40px;border-radius:50%;flex:none;
   font-family:'Rajdhani',sans-serif;font-weight:700;font-size:14px;color:#0B0F1A;overflow:hidden}
-.sym img{width:100%;height:100%;object-fit:cover;display:block}
+.sym img{width:100%;height:100%;object-fit:contain;display:block}
+.sym.has-img{background:var(--surface2);border:1px solid var(--border)}
 .row-main{flex:1;min-width:0}
 .row-name{font-weight:600;font-size:15px}
 .row-amt{font-size:12.5px;color:var(--muted);margin-top:1px}
@@ -997,6 +998,60 @@ const FACTORIES = [
   'terra1fctq9rwk6vn2v6pdyhydmczxxdsttrxd2qcsq6ffzp7akfnw2uqq3ueskn'
 ];
 const THIN_LUNC = 500000;   // below this the quote is real but barely tradeable
+const IPFS = 'https://ipfs.io/ipfs/';
+
+// marketing_info answers with either a url, the word "embedded", or nothing at
+// all - JURIS ships an empty string, which is the owner's right and not a bug
+// on our side. Whatever is missing here falls through to the local file.
+async function chainLogo(contract, mkt){
+  const lg = mkt && mkt.data && mkt.data.logo;
+  if (!lg) return null;
+  if (typeof lg === 'string' || lg.embedded !== undefined) {
+    const r = await smart(contract, { download_logo: {} }).catch(() => null);
+    const dl = r && r.data;
+    if (!dl || !dl.data) return null;
+    return 'data:' + (dl.mime_type || 'image/png') + ';base64,' + dl.data;
+  }
+  if (!lg.url) return null;
+  return lg.url.startsWith('ipfs://') ? IPFS + lg.url.slice(7) : lg.url;
+}
+
+const attr = v => String(v).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+const localIcon = sym => 'assets/tokens/' + sym.toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+// Three chances per icon, in order: the contract's own logo, a local file
+// named after the ticker, the first letter. The letter is what renders first,
+// so a slow image never leaves an empty hole in the row.
+function iconHTML(t){
+  const cands = [];
+  if (t.logo) cands.push(t.logo);
+  const base = localIcon(t.sym);
+  cands.push(base + '.png', base + '.svg', base + '.webp');
+  return '<span class="sym" style="background:' + swatch(t.sym) + '" ' +
+         'data-icons="' + attr(cands.join('|')) + '">' + t.sym[0] + '</span>';
+}
+
+// The tint is dropped the moment a real image loads, because most token art is
+// transparent and a coloured disc behind it reads as the token's own colour.
+function paintIcons(root){
+  root.querySelectorAll('.sym[data-icons]').forEach(el => {
+    const cands = el.getAttribute('data-icons').split('|').filter(Boolean);
+    let i = 0;
+    (function next(){
+      if (i >= cands.length) return;
+      const img = new Image();
+      img.alt = '';
+      img.onload = () => {
+        el.textContent = '';
+        el.removeAttribute('style');
+        el.classList.add('has-img');
+        el.appendChild(img);
+      };
+      img.onerror = () => { i += 1; next(); };
+      img.src = cands[i];
+    })();
+  });
+}
 
 const smart = (addr, msg) =>
   getJSON(LCD + '/cosmwasm/wasm/v1/contract/' + addr + '/smart/' + btoa(JSON.stringify(msg)));
@@ -1089,9 +1144,11 @@ async function loadBalances(addr){
         ]);
         const d = info.data;
         const v = amt(bal.data && bal.data.balance, d.decimals);
-        const logo = mkt && mkt.data && mkt.data.logo && mkt.data.logo.url;
         if (v > 0) {
-          const pr = await poolPrice(c, d.decimals).catch(() => null);
+          const [pr, logo] = await Promise.all([
+            poolPrice(c, d.decimals).catch(() => null),
+            chainLogo(c, mkt).catch(() => null)
+          ]);
           found.push({ sym: d.symbol, v, note: d.name, logo: logo || null, pool: pr });
         }
       } catch (e) { /* a dead contract must not take the screen down */ }
@@ -1113,17 +1170,15 @@ async function loadBalances(addr){
       }
       if (fiat) total += fiat;
       return '<li class="row">' +
-        (t.logo
-          ? '<span class="sym" style="background:' + swatch(t.sym) + '">' +
-            '<img src="' + t.logo + '" alt="" ' +
-            'onerror="this.remove();this.parentNode.textContent=\'' + t.sym[0] + '\'"></span>'
-          : '<span class="sym" style="background:' + swatch(t.sym) + '">' + t.sym[0] + '</span>') +
+        iconHTML(t) +
         '<div class="row-main"><div class="row-name">' + t.sym + '</div>' +
         '<div class="row-amt">' + fmt(t.v) + (t.note ? ' \u00b7 ' + t.note : '') + '</div></div>' +
         '<div class="row-val"><div class="row-fiat">' + (fiat !== null ? usd(fiat) : '\u2014') + '</div>' +
         '<div class="row-sub"' + (t.pool && t.pool.depth < THIN_LUNC ? ' style="color:var(--gold)"' : '') +
         '>' + sub + '</div></div></li>';
     }).join('') : '<li class="empty">This address holds nothing yet.</li>';
+
+    paintIcons(list);
 
     $('#tok-count').textContent = found.length || '';
     $('#bal-total').textContent = usd(total);
