@@ -969,8 +969,9 @@ $('#btn-verify').addEventListener('click', async () => {
 
 /* ---------------- chain reads ---------------- */
 const LCD = 'https://terra-classic-lcd.publicnode.com';
-// only addresses here - symbol and decimals are read from each contract, so
-// adding a token never means editing two places
+// A seed, not the whole list. Everything that trades is discovered from the
+// factory pools below. What lives here is what discovery cannot see: TCO has
+// no pool at all yet, so nothing but this line would ever show it.
 const CW20 = [
   'terra1566znlxwke0kp9jkhe6qgapsmcfdmc7k9czh380tlx80va8zlsgqzvjtfp',
   'terra1vhgq25vwuhdhn9xjll0rhl2s67jzw78a4g2t78y5kz89q9lsdskq2pxcj2',
@@ -1076,32 +1077,197 @@ async function prices(){
   } catch (e) { return {}; }
 }
 
-// price a CW20 from the deepest LUNC pair we can find for it
-async function poolPrice(token, dec){
-  const want = { asset_infos: [
-    { token: { contract_addr: token } },
-    { native_token: { denom: 'uluna' } }
-  ]};
-  const pairs = await Promise.all(FACTORIES.map(f =>
-    smart(f, { pair: want }).then(r => r.data && r.data.contract_addr).catch(() => null)
-  ));
+/* ---------------- discovery and pricing ----------------
+   The chain has no "which CW20 does this address hold" endpoint. Balances live
+   inside each token contract and only that contract can be asked, so the
+   candidate list has to be built from somewhere else: the market. Every CW20
+   that appears in a factory pool is a candidate - 779 pairs, 477 tokens at the
+   last count. A token with no pool at all, like TCO on its bonding curve, is
+   invisible to that method, which is why the hand written CW20 list above is
+   kept as a seed instead of being replaced.
+*/
+const LUNC_KEY = 'native:uluna';
+const infoKey = i => i.token ? 'cw20:' + i.token.contract_addr : 'native:' + i.native_token.denom;
 
-  let best = null;
-  await Promise.all(pairs.filter(Boolean).map(async pa => {
-    try {
-      const r = await smart(pa, { pool: {} });
-      const as = (r.data && r.data.assets) || [];
-      if (as.length !== 2) return;
-      const luncLeg = as.find(a => a.info.native_token && a.info.native_token.denom === 'uluna');
-      const tokLeg  = as.find(a => a.info.token && a.info.token.contract_addr === token);
-      if (!luncLeg || !tokLeg) return;
-      const lunc = amt(luncLeg.amount, 6);
-      const tok  = amt(tokLeg.amount, dec);
-      if (!tok || !lunc) return;
-      if (!best || lunc > best.depth) best = { depth: lunc, inLunc: lunc / tok };
-    } catch (e) {}
+const CACHE_TTL = 6 * 3600 * 1000;
+function cacheGet(k){
+  try {
+    const r = JSON.parse(localStorage.getItem('fw:' + k) || 'null');
+    if (r && Date.now() - r.t < CACHE_TTL) return r.v;
+  } catch (e) {}
+  return null;
+}
+function cacheSet(k, v){
+  try { localStorage.setItem('fw:' + k, JSON.stringify({ t: Date.now(), v: v })); } catch (e) {}
+}
+
+// four hundred requests fired at once earns a 429 and nothing else
+async function mapLimit(items, n, fn){
+  const out = new Array(items.length);
+  let i = 0;
+  await Promise.all(new Array(Math.min(n, items.length)).fill(0).map(async () => {
+    while (i < items.length) { const k = i++; out[k] = await fn(items[k]); }
   }));
-  return best;
+  return out;
+}
+
+let GRAPH = null;
+async function graph(){
+  if (GRAPH) return GRAPH;
+  let raw = cacheGet('pairs');
+  if (!raw) {
+    raw = [];
+    await Promise.all(FACTORIES.map(async f => {
+      let start = null;
+      for (let guard = 0; guard < 80; guard++) {
+        const q = { pairs: { limit: 30 } };
+        if (start) q.pairs.start_after = start;
+        let r;
+        try { r = await smart(f, q); } catch (e) { break; }
+        const chunk = (r.data && r.data.pairs) || [];
+        if (!chunk.length) break;
+        for (const p of chunk) raw.push({ p: p.contract_addr, i: p.asset_infos });
+        start = chunk[chunk.length - 1].asset_infos;
+        if (chunk.length < 30) break;
+      }
+    }));
+    if (raw.length) cacheSet('pairs', raw);
+  }
+  const edges = {}, tokens = [], seen = {};
+  for (const pr of raw) {
+    const a = infoKey(pr.i[0]), b = infoKey(pr.i[1]);
+    (edges[a] = edges[a] || []).push({ to: b, pair: pr.p });
+    (edges[b] = edges[b] || []).push({ to: a, pair: pr.p });
+    for (const k of [a, b]) {
+      if (k.slice(0, 5) === 'cw20:' && !seen[k]) { seen[k] = 1; tokens.push(k.slice(5)); }
+    }
+  }
+  GRAPH = { edges: edges, tokens: tokens };
+  return GRAPH;
+}
+
+// shortest ways from a token to LUNC, a few of them, so the deepest can win
+function routesToLunc(g, from, maxHops, maxRoutes){
+  if (from === LUNC_KEY) return [];
+  const found = [];
+  const seen = {};
+  seen[from] = 1;
+  let frontier = [[{ node: from }]];
+  for (let h = 0; h < maxHops && found.length < maxRoutes; h++) {
+    const next = [];
+    for (const path of frontier) {
+      const last = path[path.length - 1].node;
+      for (const e of (g.edges[last] || [])) {
+        if (e.to === LUNC_KEY) { found.push(path.concat([{ node: e.to, pair: e.pair }])); continue; }
+        if (seen[e.to]) continue;
+        next.push(path.concat([{ node: e.to, pair: e.pair }]));
+      }
+    }
+    for (const p of next) seen[p[p.length - 1].node] = 1;
+    frontier = next;
+    if (!frontier.length) break;
+  }
+  return found.slice(0, maxRoutes);
+}
+
+const DEC = {};
+DEC[LUNC_KEY] = 6;
+async function decimalsOf(key){
+  if (DEC[key] !== undefined) return DEC[key];
+  let d = 6;
+  if (key.slice(0, 5) === 'cw20:') {
+    try { const r = await smart(key.slice(5), { token_info: {} }); d = r.data.decimals; } catch (e) {}
+  }
+  DEC[key] = d;
+  return d;
+}
+
+// Walk the route from the LUNC end back to the token, carrying each node's
+// price in LUNC. Depth is the narrowest pool on the way, valued in LUNC - that
+// leg is what a real sale would have to squeeze through, so quoting the wide
+// pool at the far end would flatter the number.
+async function priceRoute(route){
+  let price = 1, depth = Infinity;
+  for (let i = route.length - 1; i > 0; i--) {
+    const near = route[i].node, far = route[i - 1].node;
+    let r;
+    try { r = await smart(route[i].pair, { pool: {} }); } catch (e) { return null; }
+    const as = (r.data && r.data.assets) || [];
+    if (as.length !== 2) return null;
+    const keys = as.map(a => infoKey(a.info));
+    const iN = keys.indexOf(near), iF = keys.indexOf(far);
+    if (iN < 0 || iF < 0) return null;
+    const an = amt(as[iN].amount, await decimalsOf(near));
+    const af = amt(as[iF].amount, await decimalsOf(far));
+    if (!an || !af) return null;
+    depth = Math.min(depth, an * price);
+    price = price * an / af;
+  }
+  return { inLunc: price, depth: depth, hops: route.length - 1 };
+}
+
+async function poolPrice(token){
+  const g = await graph();
+  const rs = routesToLunc(g, 'cw20:' + token, 3, 3);
+  if (!rs.length) return null;
+  const priced = (await Promise.all(rs.map(r => priceRoute(r).catch(() => null)))).filter(Boolean);
+  if (!priced.length) return null;
+  priced.sort((a, b) => b.depth - a.depth);
+  return priced[0];
+}
+
+async function tokenRow(c, addr, known){
+  try {
+    const [info, bal, mkt] = await Promise.all([
+      smart(c, { token_info: {} }),
+      known === undefined
+        ? smart(c, { balance: { address: addr } })
+        : Promise.resolve({ data: { balance: known } }),
+      smart(c, { marketing_info: {} }).catch(() => null)
+    ]);
+    const d = info.data;
+    DEC['cw20:' + c] = d.decimals;
+    const v = amt(bal.data && bal.data.balance, d.decimals);
+    if (!(v > 0)) return null;
+    const [pr, logo] = await Promise.all([
+      poolPrice(c).catch(() => null),
+      chainLogo(c, mkt).catch(() => null)
+    ]);
+    return { sym: d.symbol, v: v, note: d.name, logo: logo || null, pool: pr };
+  } catch (e) { return null; }   // a dead contract must not take the screen down
+}
+
+const HOME_NOTE = 'LUNC and USTC use a price feed. Everything else is priced from pools on chain, ' +
+  'following a route to LUNC when there is no direct pair. The depth shown is the narrowest pool ' +
+  'on that route, because that is the leg a real sale has to fit through.';
+
+function renderTokens(list, found, px, hint){
+  found.sort((a, b) => b.v - a.v);
+  let total = 0;
+  list.innerHTML = found.length ? found.map(t => {
+    let fiat = null, sub = 'no price';
+    if (px[t.sym]) {
+      fiat = t.v * px[t.sym];
+      sub = '';
+    } else if (t.pool && px.LUNC) {
+      fiat = t.v * t.pool.inLunc * px.LUNC;
+      sub = (t.pool.hops > 1 ? t.pool.hops + ' hops, ' : '') +
+            (t.pool.depth < THIN_LUNC ? 'thin pool, ' : 'pool ') + fmt(t.pool.depth) + ' LUNC';
+    }
+    if (fiat) total += fiat;
+    return '<li class="row">' +
+      iconHTML(t) +
+      '<div class="row-main"><div class="row-name">' + t.sym + '</div>' +
+      '<div class="row-amt">' + fmt(t.v) + (t.note ? ' \u00b7 ' + t.note : '') + '</div></div>' +
+      '<div class="row-val"><div class="row-fiat">' + (fiat !== null ? usd(fiat) : '\u2014') + '</div>' +
+      '<div class="row-sub"' + (t.pool && t.pool.depth < THIN_LUNC ? ' style="color:var(--gold)"' : '') +
+      '>' + sub + '</div></div></li>';
+  }).join('') : '<li class="empty">This address holds nothing yet.</li>';
+
+  paintIcons(list);
+  $('#tok-count').textContent = found.length || '';
+  $('#bal-total').textContent = usd(total);
+  $('#home-note').textContent = hint || HOME_NOTE;
 }
 
 async function loadBalances(addr){
@@ -1128,61 +1294,34 @@ async function loadBalances(addr){
           sym = (base.startsWith('u') ? base.slice(1) : base).toUpperCase();
           note = tr.denom_trace.path;
         } catch (e) {}
-        found.push({ sym, v: amt(b.amount, 6), note });
+        found.push({ sym: sym, v: amt(b.amount, 6), note: note });
       } else {
         found.push({ sym: b.denom.toUpperCase(), v: amt(b.amount, 6), note: '' });
       }
     }
 
-    // cw20: ask each contract who it is, then what we hold
-    await Promise.all(CW20.map(async c => {
-      try {
-        const [info, bal, mkt] = await Promise.all([
-          smart(c, { token_info: {} }),
-          smart(c, { balance: { address: addr } }),
-          smart(c, { marketing_info: {} }).catch(() => null)
-        ]);
-        const d = info.data;
-        const v = amt(bal.data && bal.data.balance, d.decimals);
-        if (v > 0) {
-          const [pr, logo] = await Promise.all([
-            poolPrice(c, d.decimals).catch(() => null),
-            chainLogo(c, mkt).catch(() => null)
-          ]);
-          found.push({ sym: d.symbol, v, note: d.name, logo: logo || null, pool: pr });
-        }
-      } catch (e) { /* a dead contract must not take the screen down */ }
-    }));
+    // the seeded few first, so the screen is useful within a second
+    const seeded = await Promise.all(CW20.map(c => tokenRow(c, addr)));
+    for (const r of seeded) if (r) found.push(r);
+    renderTokens(list, found, px, 'Checking the rest of the market for tokens you hold.');
 
-    found.sort((a, b) => b.v - a.v);
+    // then everything that trades anywhere, which is the part nobody should
+    // have to maintain by hand
+    const g = await graph();
+    const seed = {};
+    for (const c of CW20) seed[c] = 1;
+    const rest = g.tokens.filter(c => !seed[c]);
 
-    let total = 0;
-    list.innerHTML = found.length ? found.map(t => {
-      let fiat = null, sub = 'no price';
-      if (px[t.sym]) {
-        fiat = t.v * px[t.sym];
-        sub = '';
-      } else if (t.pool && px.LUNC) {
-        fiat = t.v * t.pool.inLunc * px.LUNC;
-        sub = t.pool.depth < THIN_LUNC
-          ? 'thin pool, ' + fmt(t.pool.depth) + ' LUNC'
-          : 'pool ' + fmt(t.pool.depth) + ' LUNC';
-      }
-      if (fiat) total += fiat;
-      return '<li class="row">' +
-        iconHTML(t) +
-        '<div class="row-main"><div class="row-name">' + t.sym + '</div>' +
-        '<div class="row-amt">' + fmt(t.v) + (t.note ? ' \u00b7 ' + t.note : '') + '</div></div>' +
-        '<div class="row-val"><div class="row-fiat">' + (fiat !== null ? usd(fiat) : '\u2014') + '</div>' +
-        '<div class="row-sub"' + (t.pool && t.pool.depth < THIN_LUNC ? ' style="color:var(--gold)"' : '') +
-        '>' + sub + '</div></div></li>';
-    }).join('') : '<li class="empty">This address holds nothing yet.</li>';
+    const bals = await mapLimit(rest, 14, async c => {
+      try { const r = await smart(c, { balance: { address: addr } }); return (r.data && r.data.balance) || '0'; }
+      catch (e) { return '0'; }
+    });
+    const hits = [];
+    rest.forEach((c, i) => { if (Number(bals[i]) > 0) hits.push({ c: c, bal: bals[i] }); });
 
-    paintIcons(list);
-
-    $('#tok-count').textContent = found.length || '';
-    $('#bal-total').textContent = usd(total);
-    $('#home-note').textContent = 'LUNC and USTC use a price feed. Other tokens are priced from the deepest LUNC pool on chain, which is what you could actually sell into. A thin pool is marked, because that quote will not survive a real sale.';
+    const rows = await mapLimit(hits, 6, h => tokenRow(h.c, addr, h.bal));
+    for (const r of rows) if (r) found.push(r);
+    renderTokens(list, found, px, '');
   } catch (e) {
     list.innerHTML = '<li class="empty">Could not reach the chain: ' + (e.message || e) + '</li>';
     $('#bal-total').textContent = '\u2014';
