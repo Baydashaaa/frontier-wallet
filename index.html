@@ -253,6 +253,11 @@ textarea{resize:none;min-height:110px;line-height:1.8}
 .head{display:flex;align-items:baseline;justify-content:space-between;margin:0 4px 10px}
 .head h2{font-family:'Rajdhani',sans-serif;font-weight:700;font-size:17px;color:#fff}
 .head span{font-size:12px;color:var(--muted)}
+.head-r{display:flex;align-items:center;gap:10px}
+.dust{background:transparent;border:1px solid var(--border);border-radius:999px;
+  padding:4px 10px;font-family:inherit;font-size:11px;font-weight:600;
+  color:var(--muted);cursor:pointer;transition:color .15s,border-color .15s,background .15s}
+.dust.on{color:var(--accent);border-color:var(--accent);background:rgba(123,92,255,.14)}
 .rows{list-style:none;display:flex;flex-direction:column;gap:8px;margin-bottom:22px}
 .row{display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--border);
   border-radius:var(--r-row);padding:12px 15px}
@@ -521,7 +526,7 @@ textarea{resize:none;min-height:110px;line-height:1.8}
     <button class="act" id="act-stake"><i><svg viewBox="0 0 24 24"><path d="M12 3 3 8l9 5 9-5-9-5Z"/><path d="m3 16 9 5 9-5"/><path d="m3 12 9 5 9-5"/></svg></i>Stake</button>
   </div>
 
-  <div class="head"><h2>Tokens</h2><span id="tok-count"></span></div>
+  <div class="head"><h2>Tokens</h2><div class="head-r"><button class="dust" id="dust-toggle" type="button">hide $0</button><span id="tok-count"></span></div></div>
   <ul class="rows" id="tok-list"><li class="empty">Loading balances</li></ul>
   <p class="tiny" id="home-note"></p>
 </section>
@@ -1241,10 +1246,17 @@ const HOME_NOTE = 'LUNC and USTC use a price feed. Everything else is priced fro
   'following a route to LUNC when there is no direct pair. The depth shown is the narrowest pool ' +
   'on that route, because that is the leg a real sale has to fit through.';
 
+let HIDE_DUST = false;
+try { HIDE_DUST = localStorage.getItem('fw:dust') === '1'; } catch (e) {}
+let LAST = { found: [], px: {}, hint: '' };
+
+// anything that rounds to $0.00 on screen counts as dust
+const DUST = 0.005;
+
 function renderTokens(list, found, px, hint){
-  found.sort((a, b) => b.v - a.v);
-  let total = 0;
-  list.innerHTML = found.length ? found.map(t => {
+  LAST = { found: found, px: px, hint: hint };
+
+  const rows = found.map(t => {
     let fiat = null, sub = 'no price';
     if (px[t.sym]) {
       fiat = t.v * px[t.sym];
@@ -1254,21 +1266,51 @@ function renderTokens(list, found, px, hint){
       sub = (t.pool.hops > 1 ? t.pool.hops + ' hops, ' : '') +
             (t.pool.depth < THIN_LUNC ? 'thin pool, ' : 'pool ') + fmt(t.pool.depth) + ' LUNC';
     }
-    if (fiat) total += fiat;
+    return { t: t, fiat: fiat, sub: sub };
+  });
+
+  // by value, not by count - a hundred dollars belongs above eight cents no
+  // matter how many decimal places the cheaper token happens to have
+  const rank = r => (r.fiat === null ? -1 : r.fiat);
+  rows.sort((a, b) => rank(b) - rank(a) || b.t.v - a.t.v);
+
+  const total = rows.reduce((a, r) => a + (r.fiat || 0), 0);
+  // "no price" is not the same as "worth nothing" - TCO has no pool yet, and
+  // hiding 4.8 million of it behind a dust filter would be a lie
+  const shown = HIDE_DUST ? rows.filter(r => r.fiat === null || r.fiat >= DUST) : rows;
+
+  list.innerHTML = shown.length ? shown.map(r => {
+    const t = r.t;
     return '<li class="row">' +
       iconHTML(t) +
       '<div class="row-main"><div class="row-name">' + t.sym + '</div>' +
       '<div class="row-amt">' + fmt(t.v) + (t.note ? ' \u00b7 ' + t.note : '') + '</div></div>' +
-      '<div class="row-val"><div class="row-fiat">' + (fiat !== null ? usd(fiat) : '\u2014') + '</div>' +
+      '<div class="row-val"><div class="row-fiat">' + (r.fiat !== null ? usd(r.fiat) : '\u2014') + '</div>' +
       '<div class="row-sub"' + (t.pool && t.pool.depth < THIN_LUNC ? ' style="color:var(--gold)"' : '') +
-      '>' + sub + '</div></div></li>';
-  }).join('') : '<li class="empty">This address holds nothing yet.</li>';
+      '>' + r.sub + '</div></div></li>';
+  }).join('') : '<li class="empty">' +
+    (rows.length ? 'Everything priced here rounds to zero. Turn off hide $0 to see it.'
+                 : 'This address holds nothing yet.') + '</li>';
 
   paintIcons(list);
-  $('#tok-count').textContent = found.length || '';
+  // the hidden ones are still counted, so the number never lies about the wallet
+  $('#tok-count').textContent = !rows.length ? ''
+    : (shown.length < rows.length ? shown.length + ' of ' + rows.length : String(rows.length));
   $('#bal-total').textContent = usd(total);
   $('#home-note').textContent = hint || HOME_NOTE;
 }
+
+(function wireDust(){
+  const b = $('#dust-toggle');
+  if (!b) return;
+  b.classList.toggle('on', HIDE_DUST);
+  b.addEventListener('click', () => {
+    HIDE_DUST = !HIDE_DUST;
+    try { localStorage.setItem('fw:dust', HIDE_DUST ? '1' : '0'); } catch (e) {}
+    b.classList.toggle('on', HIDE_DUST);
+    renderTokens($('#tok-list'), LAST.found, LAST.px, LAST.hint);
+  });
+})();
 
 async function loadBalances(addr){
   const list = $('#tok-list');
