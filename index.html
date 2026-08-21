@@ -1121,6 +1121,40 @@ async function mapLimit(items, n, fn){
   return out;
 }
 
+// Every CW20 transfer writes its own contract address into the wasm event, so
+// the address history is a list of tokens that actually reached this wallet.
+// Note the parameter name: this node refuses "events" and answers "query".
+async function txCandidates(addr){
+  const hit = cacheGet('tx:' + addr);
+  if (hit) return hit;
+  const out = {};
+  for (const ev of ["wasm.to='" + addr + "'", "wasm.recipient='" + addr + "'"]) {
+    for (let page = 0; page < 3; page++) {
+      let r;
+      try {
+        r = await getJSON(LCD + '/cosmos/tx/v1beta1/txs?query=' + encodeURIComponent(ev) +
+          '&pagination.limit=100&pagination.offset=' + (page * 100) +
+          '&order_by=ORDER_BY_DESC', 25000);
+      } catch (e) { break; }
+      const resp = r.tx_responses || [];
+      for (const t of resp) {
+        for (const lg of (t.logs || [])) {
+          for (const e of (lg.events || [])) {
+            if (e.type !== 'wasm') continue;
+            for (const a of (e.attributes || [])) {
+              if (a.key === '_contract_address') out[a.value] = 1;
+            }
+          }
+        }
+      }
+      if (resp.length < 100) break;
+    }
+  }
+  const list = Object.keys(out);
+  if (list.length) cacheSet('tx:' + addr, list);
+  return list;
+}
+
 let GRAPH = null;
 async function graph(){
   if (GRAPH) return GRAPH;
@@ -1354,10 +1388,13 @@ async function loadBalances(addr){
 
     // then everything that trades anywhere, which is the part nobody should
     // have to maintain by hand
-    const g = await graph();
+    // two sources, one list: what trades somewhere, and what ever arrived here.
+    // Contracts that are not tokens at all just answer nothing to balance{}.
+    const [g, txc] = await Promise.all([graph(), txCandidates(addr).catch(() => [])]);
     const seed = {};
     for (const c of CW20) seed[c] = 1;
-    const rest = g.tokens.filter(c => !seed[c]);
+    const rest = g.tokens.concat(txc)
+      .filter((c, i, a) => !seed[c] && a.indexOf(c) === i);
 
     const bals = await mapLimit(rest, 14, async c => {
       try { const r = await smart(c, { balance: { address: addr } }); return (r.data && r.data.balance) || '0'; }
