@@ -1,0 +1,238 @@
+import { FACTORIES, LCD, amt, getJSON, smart } from './chain.js';
+
+/* ---------------- discovery and pricing ----------------
+   The chain has no "which CW20 does this address hold" endpoint. Balances live
+   inside each token contract and only that contract can be asked, so the
+   candidate list has to be built from somewhere else: the market. Every CW20
+   that appears in a factory pool is a candidate - 779 pairs, 477 tokens at the
+   last count. A token with no pool at all, like TCO on its bonding curve, is
+   invisible to that method, which is why the hand written CW20 list above is
+   kept as a seed instead of being replaced.
+*/
+const LUNC_KEY = 'native:uluna';
+// TerraSwap says {token:{contract_addr}} / {native_token:{denom}},
+// Garuda says {cw20:"terra1..."} / {native:"uluna"}. Both mean the same asset.
+function infoKey(i){
+  if (!i) return '?';
+  if (i.token) return 'cw20:' + i.token.contract_addr;
+  if (i.native_token) return 'native:' + i.native_token.denom;
+  if (i.cw20) return 'cw20:' + i.cw20;
+  if (i.native) return 'native:' + i.native;
+  return '?';
+}
+
+const CACHE_TTL = 6 * 3600 * 1000;
+const CACHE_GEN = 3;   // bump when FACTORIES changes, or stale pairs hide the new ones
+function cacheGet(k){
+  try {
+    const r = JSON.parse(localStorage.getItem('fw:' + CACHE_GEN + ':' + k) || 'null');
+    if (r && Date.now() - r.t < CACHE_TTL) return r.v;
+  } catch (e) {}
+  return null;
+}
+function cacheSet(k, v){
+  try { localStorage.setItem('fw:' + CACHE_GEN + ':' + k, JSON.stringify({ t: Date.now(), v: v })); } catch (e) {}
+}
+
+// four hundred requests fired at once earns a 429 and nothing else
+async function mapLimit(items, n, fn){
+  const out = new Array(items.length);
+  let i = 0;
+  await Promise.all(new Array(Math.min(n, items.length)).fill(0).map(async () => {
+    while (i < items.length) { const k = i++; out[k] = await fn(items[k]); }
+  }));
+  return out;
+}
+
+// Every CW20 transfer writes its own contract address into the wasm event, so
+// the address history is a list of tokens that actually reached this wallet.
+// Note the parameter name: this node refuses "events" and answers "query".
+async function txCandidates(addr){
+  const hit = cacheGet('tx:' + addr);
+  if (hit) return hit;
+  const out = {};
+  for (const ev of ["wasm.to='" + addr + "'", "wasm.recipient='" + addr + "'"]) {
+    for (let page = 0; page < 3; page++) {
+      let r;
+      try {
+        r = await getJSON(LCD + '/cosmos/tx/v1beta1/txs?query=' + encodeURIComponent(ev) +
+          '&pagination.limit=100&pagination.offset=' + (page * 100) +
+          '&order_by=ORDER_BY_DESC', 25000);
+      } catch (e) { break; }
+      const resp = r.tx_responses || [];
+      for (const t of resp) {
+        for (const lg of (t.logs || [])) {
+          for (const e of (lg.events || [])) {
+            if (e.type !== 'wasm') continue;
+            for (const a of (e.attributes || [])) {
+              if (a.key === '_contract_address') out[a.value] = 1;
+            }
+          }
+        }
+      }
+      if (resp.length < 100) break;
+    }
+  }
+  const list = Object.keys(out);
+  if (list.length) cacheSet('tx:' + addr, list);
+  return list;
+}
+
+let GRAPH = null;
+async function graph(){
+  if (GRAPH) return GRAPH;
+  let raw = cacheGet('pairs');
+  if (!raw) {
+    raw = [];
+    await Promise.all(FACTORIES.map(async f => {
+      if (f.k === 'garuda') {
+        let r;
+        try { r = await smart(f.a, { pairs: {} }); } catch (e) { return; }
+        for (const p of ((r.data && r.data.pairs) || [])) {
+          raw.push({ p: p.contract, i: [p.asset1, p.asset2] });
+        }
+        return;
+      }
+      let start = null;
+      for (let guard = 0; guard < 80; guard++) {
+        const q = { pairs: { limit: 30 } };
+        if (start) q.pairs.start_after = start;
+        let r;
+        try { r = await smart(f.a, q); } catch (e) { break; }
+        const chunk = (r.data && r.data.pairs) || [];
+        if (!chunk.length) break;
+        for (const p of chunk) raw.push({ p: p.contract_addr, i: p.asset_infos });
+        start = chunk[chunk.length - 1].asset_infos;
+        if (chunk.length < 30) break;
+      }
+    }));
+    if (raw.length) cacheSet('pairs', raw);
+  }
+  const edges = {}, tokens = [], seen = {};
+  for (const pr of raw) {
+    const a = infoKey(pr.i[0]), b = infoKey(pr.i[1]);
+    (edges[a] = edges[a] || []).push({ to: b, pair: pr.p });
+    (edges[b] = edges[b] || []).push({ to: a, pair: pr.p });
+    for (const k of [a, b]) {
+      if (k.slice(0, 5) === 'cw20:' && !seen[k]) { seen[k] = 1; tokens.push(k.slice(5)); }
+    }
+  }
+  GRAPH = { edges: edges, tokens: tokens };
+  return GRAPH;
+}
+
+// shortest ways from a token to LUNC, a few of them, so the deepest can win
+function routesToLunc(g, from, maxHops, maxRoutes){
+  if (from === LUNC_KEY) return [];
+  const found = [];
+  const seen = {};
+  seen[from] = 1;
+  let frontier = [[{ node: from }]];
+  for (let h = 0; h < maxHops && found.length < maxRoutes; h++) {
+    const next = [];
+    for (const path of frontier) {
+      const last = path[path.length - 1].node;
+      for (const e of (g.edges[last] || [])) {
+        if (e.to === LUNC_KEY) { found.push(path.concat([{ node: e.to, pair: e.pair }])); continue; }
+        if (seen[e.to]) continue;
+        next.push(path.concat([{ node: e.to, pair: e.pair }]));
+      }
+    }
+    for (const p of next) seen[p[p.length - 1].node] = 1;
+    frontier = next;
+    if (!frontier.length) break;
+  }
+  return found.slice(0, maxRoutes);
+}
+
+const DEC = {};
+DEC[LUNC_KEY] = 6;
+async function decimalsOf(key){
+  if (DEC[key] !== undefined) return DEC[key];
+  let d = 6;
+  if (key.slice(0, 5) === 'cw20:') {
+    try { const r = await smart(key.slice(5), { token_info: {} }); d = r.data.decimals; } catch (e) {}
+  }
+  DEC[key] = d;
+  return d;
+}
+
+// Walk the route from the LUNC end back to the token, carrying each node's
+// price in LUNC. Depth is the narrowest pool on the way, valued in LUNC - that
+// leg is what a real sale would have to squeeze through, so quoting the wide
+// pool at the far end would flatter the number.
+// Both pool shapes reduced to the same two numbers: which asset, how much of
+// it. Detected from the answer rather than remembered per pair, so a factory
+// that changes its mind about the format does not silently produce nonsense.
+async function reserves(pair){
+  let r;
+  try { r = await smart(pair, { pool: {} }); } catch (e) { return null; }
+  const d = (r && r.data) || {};
+  if (Array.isArray(d.assets)) {
+    if (d.assets.length !== 2) return null;
+    return d.assets.map(a => ({ key: infoKey(a.info), raw: a.amount }));
+  }
+  if (d.asset1 && d.reserve1 !== undefined) {
+    return [{ key: infoKey(d.asset1), raw: d.reserve1 },
+            { key: infoKey(d.asset2), raw: d.reserve2 }];
+  }
+  return null;
+}
+
+async function priceRoute(route){
+  let price = 1, depth = Infinity;
+  for (let i = route.length - 1; i > 0; i--) {
+    const near = route[i].node, far = route[i - 1].node;
+    const res = await reserves(route[i].pair);
+    if (!res) return null;
+    const keys = res.map(x => x.key);
+    const iN = keys.indexOf(near), iF = keys.indexOf(far);
+    if (iN < 0 || iF < 0) return null;
+    const an = amt(res[iN].raw, await decimalsOf(near));
+    const af = amt(res[iF].raw, await decimalsOf(far));
+    if (!an || !af) return null;
+    depth = Math.min(depth, an * price);
+    price = price * an / af;
+  }
+  return { inLunc: price, depth: depth, hops: route.length - 1 };
+}
+
+// Tokens that have not graduated to a pool still trade, against a curve. The
+// factory maps a token to its curve, and the curve states its own price - so
+// there is nothing to derive here, only to read.
+const PUMP_FACTORY = 'terra1vd595gqyekq05p8hy9t0r9q68jtk5whleqt5py4wdwrqfykz74lqrmw8q5';
+
+async function bondPrice(token){
+  let r;
+  // BondNotFound is the ordinary answer for most tokens, not an error worth
+  // reporting - almost nothing on the chain is bonded
+  try { r = await smart(PUMP_FACTORY, { bond: { filter: { by_token: token } } }); }
+  catch (e) { return null; }
+  const d = r && r.data;
+  if (!d || !d.price) return null;
+  const p = Number(d.price);
+  if (!isFinite(p) || p <= 0) return null;
+  return {
+    inLunc: p,
+    // real LUNC in the curve. virtual_reserve is formula, not funds.
+    depth: amt(d.native_balance, 6),
+    hops: 1,
+    bond: true,
+    status: d.status
+  };
+}
+
+async function poolPrice(token){
+  const g = await graph();
+  const rs = routesToLunc(g, 'cw20:' + token, 3, 3);
+  const priced = rs.length
+    ? (await Promise.all(rs.map(r => priceRoute(r).catch(() => null)))).filter(Boolean)
+    : [];
+  if (priced.length) {
+    priced.sort((a, b) => b.depth - a.depth);
+    return priced[0];
+  }
+  return await bondPrice(token).catch(() => null);
+}
+
+export { DEC, graph, mapLimit, poolPrice, txCandidates };
