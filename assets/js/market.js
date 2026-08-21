@@ -22,7 +22,7 @@ function infoKey(i){
 }
 
 const CACHE_TTL = 6 * 3600 * 1000;
-const CACHE_GEN = 3;   // bump when FACTORIES changes, or stale pairs hide the new ones
+const CACHE_GEN = 4;   // bump when FACTORIES changes, or stale pairs hide the new ones
 function cacheGet(k){
   try {
     const r = JSON.parse(localStorage.getItem('fw:' + CACHE_GEN + ':' + k) || 'null');
@@ -78,6 +78,27 @@ async function txCandidates(addr){
   return list;
 }
 
+// /code/{id}/contracts, paged. count_total is not supported by this node, so
+// it is left off - next_key is enough.
+async function contractsByCode(code){
+  const hit = cacheGet('code:' + code);
+  if (hit) return hit;
+  const out = [];
+  let next = null;
+  for (let page = 0; page < 40; page++) {
+    let url = LCD + '/cosmwasm/wasm/v1/code/' + code + '/contracts?pagination.limit=100';
+    if (next) url += '&pagination.key=' + encodeURIComponent(next);
+    let r;
+    try { r = await getJSON(url, 25000); } catch (e) { break; }
+    const got = r.contracts || [];
+    out.push(...got);
+    next = r.pagination && r.pagination.next_key;
+    if (!next || !got.length) break;
+  }
+  if (out.length) cacheSet('code:' + code, out);
+  return out;
+}
+
 let GRAPH = null;
 async function graph(){
   if (GRAPH) return GRAPH;
@@ -85,12 +106,19 @@ async function graph(){
   if (!raw) {
     raw = [];
     await Promise.all(FACTORIES.map(async f => {
-      if (f.k === 'garuda') {
-        let r;
-        try { r = await smart(f.a, { pairs: {} }); } catch (e) { return; }
-        for (const p of ((r.data && r.data.pairs) || [])) {
-          raw.push({ p: p.contract, i: [p.asset1, p.asset2] });
-        }
+      if (f.k === 'code') {
+        // Every pool of this exchange is an instance of one code, so the chain
+        // can list them and we never have to believe the factory.
+        const addrs = await contractsByCode(f.code);
+        const got = await mapLimit(addrs, 12, async c => {
+          try {
+            const r = await smart(c, { pool: {} });
+            const d = (r && r.data) || {};
+            if (!d.asset1 || d.reserve1 === undefined) return null;
+            return { p: c, i: [d.asset1, d.asset2] };
+          } catch (e) { return null; }
+        });
+        for (const g of got) if (g) raw.push(g);
         return;
       }
       let start = null;
@@ -122,13 +150,17 @@ async function graph(){
 }
 
 // shortest ways from a token to LUNC, a few of them, so the deepest can win
+// Returns the routes found at the FIRST distance that yields any, all of them,
+// capped. ELPACO sits in eight Garuda pools and one of them is the real market;
+// taking "some three routes" and hoping meant quoting a side pool at three
+// times the price you could actually sell for.
 function routesToLunc(g, from, maxHops, maxRoutes){
   if (from === LUNC_KEY) return [];
   const found = [];
   const seen = {};
   seen[from] = 1;
   let frontier = [[{ node: from }]];
-  for (let h = 0; h < maxHops && found.length < maxRoutes; h++) {
+  for (let h = 0; h < maxHops; h++) {
     const next = [];
     for (const path of frontier) {
       const last = path[path.length - 1].node;
@@ -138,6 +170,8 @@ function routesToLunc(g, from, maxHops, maxRoutes){
         next.push(path.concat([{ node: e.to, pair: e.pair }]));
       }
     }
+    // a shorter route is a better quote, so stop as soon as one distance pays
+    if (found.length) break;
     for (const p of next) seen[p[p.length - 1].node] = 1;
     frontier = next;
     if (!frontier.length) break;
@@ -224,7 +258,7 @@ async function bondPrice(token){
 
 async function poolPrice(token){
   const g = await graph();
-  const rs = routesToLunc(g, 'cw20:' + token, 3, 3);
+  const rs = routesToLunc(g, 'cw20:' + token, 3, 12);
   const priced = rs.length
     ? (await Promise.all(rs.map(r => priceRoute(r).catch(() => null)))).filter(Boolean)
     : [];

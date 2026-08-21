@@ -32,12 +32,17 @@ const swatch = sym => COLOR[sym] || hue(sym);
 // Two dialects. "ts" is the TerraSwap shape: pairs{limit,start_after} paged
 // thirty at a time, sides in an asset_infos array. "garuda" answers pairs{}
 // once and names the sides asset1 / asset2. Adding a factory is still one line.
+// Names read off the chain, not guessed. "ts" means the TerraSwap message
+// shape - pairs{limit,start_after}, sides in asset_infos - which four of these
+// speak regardless of who built them. Garuda speaks its own, and worse, its
+// factory answers pairs{} with ten pools out of 205 and ignores every paging
+// field without complaining, so its pools are listed by code id instead.
 const FACTORIES = [
-  { a: 'terra1n75fgfc8clsssrm2k0fswgtzsvstdaah7la6sfu96szdu22xta0q57rqqr', k: 'ts' },
-  { a: 'terra1y55punu6m5cm8sgqdgt6ngevtyklaylc09qxputn6ksye4ptf9ysxmtyl6', k: 'ts' },
-  { a: 'terra1fctq9rwk6vn2v6pdyhydmczxxdsttrxd2qcsq6ffzp7akfnw2uqq3ueskn', k: 'ts' },
-  { a: 'terra1ejpgvv7g3hj0u6fpcnxhflqp84g0w3cnaskqkg5733ygwlmf963sfchsea', k: 'ts' },      // CL8Y
-  { a: 'terra1ypwj6sw25g0qcykv7mzmcvsndvx56r3yrgkaw3fds7yzwl7fwwcsnxkeh7', k: 'garuda' }   // Garuda
+  { a: 'terra1n75fgfc8clsssrm2k0fswgtzsvstdaah7la6sfu96szdu22xta0q57rqqr', k: 'ts', n: 'Terraport V2' },
+  { a: 'terra1y55punu6m5cm8sgqdgt6ngevtyklaylc09qxputn6ksye4ptf9ysxmtyl6', k: 'ts', n: 'Terraport V3' },
+  { a: 'terra1fctq9rwk6vn2v6pdyhydmczxxdsttrxd2qcsq6ffzp7akfnw2uqq3ueskn', k: 'ts', n: 'TwingoSwap' },
+  { a: 'terra1ejpgvv7g3hj0u6fpcnxhflqp84g0w3cnaskqkg5733ygwlmf963sfchsea', k: 'ts', n: 'CL8Y' },
+  { a: 'terra1ypwj6sw25g0qcykv7mzmcvsndvx56r3yrgkaw3fds7yzwl7fwwcsnxkeh7', k: 'code', n: 'Garuda', code: 10907 }
 ];
 const THIN_LUNC = 500000;   // below this the quote is real but barely tradeable
 const IPFS = 'https://ipfs.io/ipfs/';
