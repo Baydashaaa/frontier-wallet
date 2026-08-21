@@ -1287,14 +1287,42 @@ async function priceRoute(route){
   return { inLunc: price, depth: depth, hops: route.length - 1 };
 }
 
+// Tokens that have not graduated to a pool still trade, against a curve. The
+// factory maps a token to its curve, and the curve states its own price - so
+// there is nothing to derive here, only to read.
+const PUMP_FACTORY = 'terra1vd595gqyekq05p8hy9t0r9q68jtk5whleqt5py4wdwrqfykz74lqrmw8q5';
+
+async function bondPrice(token){
+  let r;
+  // BondNotFound is the ordinary answer for most tokens, not an error worth
+  // reporting - almost nothing on the chain is bonded
+  try { r = await smart(PUMP_FACTORY, { bond: { filter: { by_token: token } } }); }
+  catch (e) { return null; }
+  const d = r && r.data;
+  if (!d || !d.price) return null;
+  const p = Number(d.price);
+  if (!isFinite(p) || p <= 0) return null;
+  return {
+    inLunc: p,
+    // real LUNC in the curve. virtual_reserve is formula, not funds.
+    depth: amt(d.native_balance, 6),
+    hops: 1,
+    bond: true,
+    status: d.status
+  };
+}
+
 async function poolPrice(token){
   const g = await graph();
   const rs = routesToLunc(g, 'cw20:' + token, 3, 3);
-  if (!rs.length) return null;
-  const priced = (await Promise.all(rs.map(r => priceRoute(r).catch(() => null)))).filter(Boolean);
-  if (!priced.length) return null;
-  priced.sort((a, b) => b.depth - a.depth);
-  return priced[0];
+  const priced = rs.length
+    ? (await Promise.all(rs.map(r => priceRoute(r).catch(() => null)))).filter(Boolean)
+    : [];
+  if (priced.length) {
+    priced.sort((a, b) => b.depth - a.depth);
+    return priced[0];
+  }
+  return await bondPrice(token).catch(() => null);
 }
 
 async function tokenRow(c, addr, known){
@@ -1339,8 +1367,12 @@ function renderTokens(list, found, px, hint){
       sub = '';
     } else if (t.pool && px.LUNC) {
       fiat = t.v * t.pool.inLunc * px.LUNC;
-      sub = (t.pool.hops > 1 ? t.pool.hops + ' hops, ' : '') +
-            (t.pool.depth < THIN_LUNC ? 'thin pool, ' : 'pool ') + fmt(t.pool.depth) + ' LUNC';
+      // a curve is not a pool and should not be described as one
+      sub = t.pool.bond
+        ? 'bonding curve, ' + fmt(t.pool.depth) + ' LUNC' +
+          (t.pool.status && t.pool.status !== 'OPEN' ? ' \u00b7 ' + t.pool.status.toLowerCase() : '')
+        : (t.pool.hops > 1 ? t.pool.hops + ' hops, ' : '') +
+          (t.pool.depth < THIN_LUNC ? 'thin pool, ' : 'pool ') + fmt(t.pool.depth) + ' LUNC';
     }
     return { t: t, fiat: fiat, sub: sub };
   });
