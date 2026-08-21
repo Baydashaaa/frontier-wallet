@@ -269,4 +269,4 @@ async function poolPrice(token){
   return await bondPrice(token).catch(() => null);
 }
 
-export { DEC, graph, mapLimit, poolPrice, txCandidates };
+export { DEC, cacheGet, cacheSet, graph, mapLimit, poolPrice, txCandidates };

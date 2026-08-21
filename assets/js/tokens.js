@@ -1,5 +1,5 @@
 import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js';
-import { DEC, graph, mapLimit, poolPrice, txCandidates } from './market.js';
+import { DEC, cacheGet, cacheSet, graph, mapLimit, poolPrice, txCandidates } from './market.js';
 import { $, go } from './shell.js';
 
 async function tokenRow(c, addr, known){
@@ -19,7 +19,7 @@ async function tokenRow(c, addr, known){
       poolPrice(c).catch(() => null),
       chainLogo(c, mkt).catch(() => null)
     ]);
-    return { sym: d.symbol, v: v, note: d.name, logo: logo || null, pool: pr };
+    return { sym: d.symbol, v: v, note: d.name, logo: logo || null, pool: pr, contract: c };
   } catch (e) { return null; }   // a dead contract must not take the screen down
 }
 
@@ -48,8 +48,9 @@ function renderTokens(list, found, px, hint){
       sub = t.pool.bond
         ? 'bonding curve, ' + fmt(t.pool.depth) + ' LUNC' +
           (t.pool.status && t.pool.status !== 'OPEN' ? ' \u00b7 ' + t.pool.status.toLowerCase() : '')
-        : (t.pool.hops > 1 ? t.pool.hops + ' hops, ' : '') +
-          (t.pool.depth < THIN_LUNC ? 'thin pool, ' : 'pool ') + fmt(t.pool.depth) + ' LUNC';
+        : t.pool.hops > 1
+          ? t.pool.hops + ' hops \u00b7 narrowest leg ' + fmt(t.pool.depth) + ' LUNC'
+          : (t.pool.depth < THIN_LUNC ? 'thin pool, ' : 'pool ') + fmt(t.pool.depth) + ' LUNC';
     }
     return { t: t, fiat: fiat, sub: sub };
   });
@@ -128,9 +129,17 @@ async function loadBalances(addr){
     }
 
     // the seeded few first, so the screen is useful within a second
-    const seeded = await Promise.all(CW20.map(c => tokenRow(c, addr)));
+    // What this address held last time, asked first. A wallet's contents
+    // hardly change between openings, so this is nearly always the whole list,
+    // and it arrives in one round instead of after five hundred queries.
+    const remembered = cacheGet('held:' + addr) || [];
+    const firstRound = CW20.concat(remembered.filter(c => CW20.indexOf(c) < 0));
+
+    const seeded = await Promise.all(firstRound.map(c => tokenRow(c, addr)));
     for (const r of seeded) if (r) found.push(r);
-    renderTokens(list, found, px, 'Checking the rest of the market for tokens you hold.');
+    renderTokens(list, found, px, remembered.length
+      ? 'Checking for anything new.'
+      : 'Checking the rest of the market for tokens you hold. First open takes a moment.');
 
     // then everything that trades anywhere, which is the part nobody should
     // have to maintain by hand
@@ -138,7 +147,7 @@ async function loadBalances(addr){
     // Contracts that are not tokens at all just answer nothing to balance{}.
     const [g, txc] = await Promise.all([graph(), txCandidates(addr).catch(() => [])]);
     const seed = {};
-    for (const c of CW20) seed[c] = 1;
+    for (const c of firstRound) seed[c] = 1;
     const rest = g.tokens.concat(txc)
       .filter((c, i, a) => !seed[c] && a.indexOf(c) === i);
 
@@ -151,6 +160,13 @@ async function loadBalances(addr){
 
     const rows = await mapLimit(hits, 6, h => tokenRow(h.c, addr, h.bal));
     for (const r of rows) if (r) found.push(r);
+
+    // remember the CW20 contracts that came back with something, so the next
+    // open starts from the answer. A token spent down to zero simply drops out
+    // of the list next time, because this is rewritten from the full sweep.
+    const held = firstRound.filter(c => found.some(r => r.contract === c))
+      .concat(hits.map(h => h.c));
+    cacheSet('held:' + addr, held.filter((c, i, a) => a.indexOf(c) === i));
     renderTokens(list, found, px, '');
   } catch (e) {
     list.innerHTML = '<li class="empty">Could not reach the chain: ' + (e.message || e) + '</li>';
