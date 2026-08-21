@@ -1,0 +1,180 @@
+{
+ "held": [
+  {
+   "symbol": "JURIS",
+   "contract": "terra1vhgq25vwuhdhn9xjll0rhl2s67jzw78a4g2t78y5kz89q9lsdskq2pxcj2",
+   "amount": 57647167.993174,
+   "routes": 3,
+   "pairs": 15,
+   "inLunc": 0.052016237511518855,
+   "depth": 346739295.27595,
+   "hops": 1
+  },
+  {
+   "symbol": "TCO",
+   "contract": "terra1566znlxwke0kp9jkhe6qgapsmcfdmc7k9czh380tlx80va8zlsgqzvjtfp",
+   "amount": 4818400.005984,
+   "routes": 0,
+   "pairs": 0
+  },
+  {
+   "symbol": "PEAS",
+   "contract": "terra1d06z7c94qu5vuhnk0r3m6dyn75y259uqjjk8mf2kxx4gxmfvnavsnx2uc0",
+   "amount": 20000.0,
+   "routes": 1,
+   "pairs": 1,
+   "inLunc": 0.07435055069164034,
+   "depth": 24570002.622947,
+   "hops": 1
+  },
+  {
+   "symbol": "LTK",
+   "contract": "terra1mm8tdp40r2slzwqxk8jsz66ayc4zp69muxeateq37x2xquttzsaqy7275a",
+   "amount": 7137.722857,
+   "routes": 3,
+   "pairs": 1,
+   "inLunc": 67.32782973113935,
+   "depth": 7503.331469233648,
+   "hops": 2
+  },
+  {
+   "symbol": "Jurass",
+   "contract": "terra1334z0pkv8gqxh9yd8wsspmvuw23kzm46epkc3y74g6hk7v80j3hq4yk7ff",
+   "amount": 3170.903481,
+   "routes": 1,
+   "pairs": 1,
+   "inLunc": 0.012143727127322635,
+   "depth": 9945352.69197,
+   "hops": 1
+  },
+  {
+   "symbol": "TERRA",
+   "contract": "terra1ex0hjv3wurhj4wgup4jzlzaqj4av6xqd8le4etml7rg9rs207y4s8cdvrp",
+   "amount": 2178.321592,
+   "routes": 2,
+   "pairs": 88,
+   "inLunc": 21.468419824448755,
+   "depth": 191121874.620738,
+   "hops": 1
+  },
+  {
+   "symbol": "ELPACO",
+   "contract": "terra1ljyvgw50u67r3ep7pp7qexgnsgy96fl57q0suut325ehed7eal8qwdtdq4",
+   "amount": 1627.46765,
+   "routes": 0,
+   "pairs": 0
+  },
+  {
+   "symbol": "LMY",
+   "contract": "terra10ml4ddapu8hmca5g6e8qw8tr0cxatwtd6clpun8nueced0f5vd8sn0gwud",
+   "amount": 348.279226,
+   "routes": 1,
+   "pairs": 2,
+   "inLunc": 0.04290821893855544,
+   "depth": 1431467.196658,
+   "hops": 1
+  },
+  {
+   "symbol": "GRDX",
+   "contract": "terra12f3f5fzfzxckc0qlv3rmwwkjfhzevpwmx77345n0zuu2678vxf0sm6vvcw",
+   "amount": 345.371686,
+   "routes": 1,
+   "pairs": 9,
+   "inLunc": 15.514647452583077,
+   "depth": 5412633.71705,
+   "hops": 1
+  },
+  {
+   "symbol": "FLX",
+   "contract": "terra1jfm4mxtc8afqpnp556j97gsyhydel87cvm0lxvgv6l7f4kghdq7sq98xjk",
+   "amount": 304.129683,
+   "routes": 1,
+   "pairs": 2,
+   "inLunc": 0.033035919327829476,
+   "depth": 7950705.933551,
+   "hops": 1
+  },
+  {
+   "symbol": "PIZZAB",
+   "contract": "terra1vxhnzlr44ajzq84xra07gtvyv5saxmsyz6cd5cewqm479znvsepqzdkk05",
+   "amount": 50.709939,
+   "routes": 1,
+   "pairs": 2,
+   "inLunc": 1.3283140757358827,
+   "depth": 64895985.624437,
+   "hops": 1
+  },
+  {
+   "symbol": "SRT",
+   "contract": "terra1q9fl6sug6pgyh7x6gaka5kf0f6glshlvuej8wf9ufd5jp0fje2xssunduh",
+   "amount": 35.00257,
+   "routes": 1,
+   "pairs": 2,
+   "inLunc": 201.19668656648955,
+   "depth": 503806.649109,
+   "hops": 1
+  },
+  {
+   "symbol": "TKMN",
+   "contract": "terra1nv36kq4dpxf4d00w4mv4w095ek8kv48f54v46qduruy4fwd2dtzq2uk70j",
+   "amount": 14.613378,
+   "routes": 1,
+   "pairs": 2,
+   "inLunc": 1.0181872740101443,
+   "depth": 10737046.171083,
+   "hops": 1
+  },
+  {
+   "symbol": "SELE",
+   "contract": "terra1v0z94pr8ynzq8zmuyv3j0eraqjs4m5zpm4ptgru459y5fye2at7q0e4jtd",
+   "amount": 10.0,
+   "routes": 1,
+   "pairs": 6,
+   "inLunc": 163.06483897387383,
+   "depth": 63555580.268556,
+   "hops": 1
+  },
+  {
+   "symbol": "alai",
+   "contract": "terra14mylsgp0vk4hgqrx3lm5umnvxs5hmpepfv625mvzcq8g9h88plcsgqcgl5",
+   "amount": 0.79116,
+   "routes": 1,
+   "pairs": 1,
+   "inLunc": 0.00942696788245179,
+   "depth": 1.0473361317403939e-05,
+   "hops": 2
+  },
+  {
+   "symbol": "RAKOFF",
+   "contract": "terra1peu2e6efadlrvdq70nkkkqx36nzn5ccgtjg5wwd3xry3yzd276dqnep594",
+   "amount": 0.493518,
+   "routes": 1,
+   "pairs": 1,
+   "inLunc": 0.16722266560705906,
+   "depth": 36650736.257194,
+   "hops": 1
+  },
+  {
+   "symbol": "DO",
+   "contract": "terra15p8su45k45axng8ue59rl6zph4at27s49u3agr6uqrx3dhcxpg3qt0ekdt",
+   "amount": 7e-06,
+   "routes": 1,
+   "pairs": 18,
+   "inLunc": 2.132428504330219e-05,
+   "depth": 12127787.32609,
+   "hops": 1
+  }
+ ],
+ "failed": [
+  [
+   "terra1a9hyyxssndlwe50hed5dqtd39e3trvvksg93k8l4v0knsmytrpqqpv9f6e",
+   "HTTP Error 500: Internal Server Error"
+  ],
+  [
+   "terra1gasz0kc6222amfa5vfj4zea9hwv32c3n5cnvejz62e3rxmujmksqhaqacl",
+   "HTTP Error 500: Internal Server Error"
+  ]
+ ],
+ "pairs": 779,
+ "tokens": 477
+}

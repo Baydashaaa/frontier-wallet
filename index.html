@@ -998,10 +998,14 @@ const swatch = sym => COLOR[sym] || hue(sym);
 // way, so one code path covers Terraport, Astroport and the rest. Pools that
 // were deployed straight from a wallet are invisible here - that is a known
 // gap, not an oversight.
+// Every TerraSwap shaped factory we know about. Adding one here widens both
+// discovery and pricing at once, because the candidate list and the route
+// graph are both built from whatever these return.
 const FACTORIES = [
   'terra1n75fgfc8clsssrm2k0fswgtzsvstdaah7la6sfu96szdu22xta0q57rqqr',
   'terra1y55punu6m5cm8sgqdgt6ngevtyklaylc09qxputn6ksye4ptf9ysxmtyl6',
-  'terra1fctq9rwk6vn2v6pdyhydmczxxdsttrxd2qcsq6ffzp7akfnw2uqq3ueskn'
+  'terra1fctq9rwk6vn2v6pdyhydmczxxdsttrxd2qcsq6ffzp7akfnw2uqq3ueskn',
+  'terra1ejpgvv7g3hj0u6fpcnxhflqp84g0w3cnaskqkg5733ygwlmf963sfchsea'   // CL8Y
 ];
 const THIN_LUNC = 500000;   // below this the quote is real but barely tradeable
 const IPFS = 'https://ipfs.io/ipfs/';
@@ -1095,15 +1099,16 @@ const LUNC_KEY = 'native:uluna';
 const infoKey = i => i.token ? 'cw20:' + i.token.contract_addr : 'native:' + i.native_token.denom;
 
 const CACHE_TTL = 6 * 3600 * 1000;
+const CACHE_GEN = 2;   // bump when FACTORIES changes, or stale pairs hide the new ones
 function cacheGet(k){
   try {
-    const r = JSON.parse(localStorage.getItem('fw:' + k) || 'null');
+    const r = JSON.parse(localStorage.getItem('fw:' + CACHE_GEN + ':' + k) || 'null');
     if (r && Date.now() - r.t < CACHE_TTL) return r.v;
   } catch (e) {}
   return null;
 }
 function cacheSet(k, v){
-  try { localStorage.setItem('fw:' + k, JSON.stringify({ t: Date.now(), v: v })); } catch (e) {}
+  try { localStorage.setItem('fw:' + CACHE_GEN + ':' + k, JSON.stringify({ t: Date.now(), v: v })); } catch (e) {}
 }
 
 // four hundred requests fired at once earns a 429 and nothing else
