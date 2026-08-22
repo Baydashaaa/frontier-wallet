@@ -1,24 +1,36 @@
-import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=55e782cc';
-import { DEC, cacheGet, cacheGetStale, cacheSet, graph, mapLimit, marketComplete, poolPrice, txCandidates } from './market.js?v=55e782cc';
-import { $, go } from './shell.js?v=55e782cc';
+import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=a737ebb0';
+import { DEC, cacheGet, cacheGetStale, cacheSet, graph, mapLimit, marketComplete, poolPrice, txCandidates } from './market.js?v=a737ebb0';
+import { $, go } from './shell.js?v=a737ebb0';
 
 async function tokenRow(c, addr, known){
   try {
+    // The symbol, the decimals and the logo were fixed when this contract was
+    // deployed. Only the balance is worth asking about again.
+    let fixed = cacheGet('ti:' + c);
     const [info, bal, mkt] = await Promise.all([
-      smart(c, { token_info: {} }),
+      fixed ? null : smart(c, { token_info: {} }),
       known === undefined
         ? smart(c, { balance: { address: addr } })
         : Promise.resolve({ data: { balance: known } }),
-      smart(c, { marketing_info: {} }).catch(() => null)
+      fixed ? null : smart(c, { marketing_info: {} }).catch(() => null)
     ]);
-    const d = info.data;
+    if (!fixed) {
+      const t = info.data;
+      fixed = {
+        sym: t.symbol,
+        dec: t.decimals,
+        note: t.name,
+        logo: (await chainLogo(c, mkt).catch(() => null)) || null
+      };
+      cacheSet('ti:' + c, fixed);
+    }
+    const d = { symbol: fixed.sym, decimals: fixed.dec, name: fixed.note };
     DEC['cw20:' + c] = d.decimals;
     const v = amt(bal.data && bal.data.balance, d.decimals);
     if (!(v > 0)) return null;
-    // No pricing here. A balance and a logo are two cheap reads; a price is a
-    // thousand, and making the row wait on them is what left the screen empty.
-    const logo = await chainLogo(c, mkt).catch(() => null);
-    return { sym: d.symbol, v: v, note: d.name, logo: logo || null, pool: null, contract: c };
+    // No pricing here. A balance is the one read that has to happen; a price is
+    // many, and making the row wait on them is what left the screen empty.
+    return { sym: d.symbol, v: v, note: d.name, logo: fixed.logo, pool: null, contract: c };
   } catch (e) { return null; }   // a dead contract must not take the screen down
 }
 
@@ -155,7 +167,9 @@ async function loadBalances(addr){
     const remembered = cacheGet('held:' + addr) || [];
     const firstRound = CW20.concat(remembered.filter(c => CW20.indexOf(c) < 0));
 
-    const seeded = await Promise.all(firstRound.map(c => tokenRow(c, addr)));
+    // Sixty requests at once earns a 429 and a pile of retries, which is
+    // slower than asking politely eight at a time.
+    const seeded = await mapLimit(firstRound, 8, c => tokenRow(c, addr));
     for (const r of seeded) if (r) found.push(r);
     renderTokens(list, found, px, remembered.length
       ? 'Checking for anything new.'
