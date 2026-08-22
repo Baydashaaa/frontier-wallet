@@ -1,5 +1,5 @@
 import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js';
-import { DEC, cacheGet, cacheGetStale, cacheSet, graph, mapLimit, poolPrice, txCandidates } from './market.js';
+import { DEC, cacheGet, cacheGetStale, cacheSet, graph, mapLimit, marketComplete, poolPrice, txCandidates } from './market.js';
 import { $, go } from './shell.js';
 
 async function tokenRow(c, addr, known){
@@ -177,7 +177,9 @@ async function loadBalances(addr){
       .concat(found.map(r => r.contract).filter(Boolean))
       .concat(hits.map(h => h.c));
     cacheSet('held:' + addr, held.filter((c, i, a) => c && a.indexOf(c) === i));
-    renderTokens(list, found, px, '');
+    renderTokens(list, found, px, marketComplete() ? '' :
+      'Could not read every exchange just now, so some prices may be based on ' +
+      'the wrong pool. Reopening usually fixes it.');
   } catch (e) {
     list.innerHTML = '<li class="empty">Could not reach the chain: ' + (e.message || e) + '</li>';
     $('#bal-total').textContent = '\u2014';

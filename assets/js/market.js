@@ -22,7 +22,7 @@ function infoKey(i){
 }
 
 const CACHE_TTL = 6 * 3600 * 1000;
-const CACHE_GEN = 4;   // bump when FACTORIES changes, or stale pairs hide the new ones
+const CACHE_GEN = 5;   // bump when FACTORIES changes, or stale pairs hide the new ones
 function cacheGet(k){
   try {
     const r = JSON.parse(localStorage.getItem('fw:' + CACHE_GEN + ':' + k) || 'null');
@@ -107,12 +107,24 @@ async function contractsByCode(code){
   return out;
 }
 
+// false whenever the pair list in use was not read in full
+let MARKET_COMPLETE = true;
+const marketComplete = () => MARKET_COMPLETE;
+
 let GRAPH = null;
 async function graph(){
   if (GRAPH) return GRAPH;
-  let raw = cacheGet('pairs');
+  // A stored list is only believed if it names every exchange. Short lists
+  // used to look exactly like real ones.
+  const stored = cacheGet('pairs');
+  let raw = null;
+  if (stored && stored.pairs && FACTORIES.every(f => stored.by && stored.by[f.n] > 0)) {
+    raw = stored.pairs;
+  }
+  MARKET_COMPLETE = !!raw;
   if (!raw) {
     raw = [];
+    const by = {};
     // Anything that fails here makes the picture incomplete, and an incomplete
     // picture must not be written down - a missing deep pool does not read as
     // "missing", it reads as a confident wrong price.
@@ -123,6 +135,7 @@ async function graph(){
         // can list them and we never have to believe the factory.
         const addrs = await contractsByCode(f.code);
         if (!addrs.length) { lost += 1; return; }
+        by[f.n] = 0;
         const got = await mapLimit(addrs, 8, async c => {
           try {
             const r = await smart(c, { pool: {} });
@@ -133,7 +146,7 @@ async function graph(){
         });
         for (const g of got) {
           if (g === 'fail') lost += 1;
-          else if (g) raw.push(g);
+          else if (g) { raw.push(g); by[f.n] = (by[f.n] || 0) + 1; }
         }
         return;
       }
@@ -146,7 +159,10 @@ async function graph(){
         try { r = await smart(f.a, q); } catch (e) { lost += 1; break; }
         const chunk = (r.data && r.data.pairs) || [];
         if (!chunk.length) break;
-        for (const p of chunk) raw.push({ p: p.contract_addr, i: p.asset_infos });
+        for (const p of chunk) {
+          raw.push({ p: p.contract_addr, i: p.asset_infos });
+          by[f.n] = (by[f.n] || 0) + 1;
+        }
         start = chunk[chunk.length - 1].asset_infos;
         if (chunk.length < 30) break;
       }
@@ -166,14 +182,13 @@ async function graph(){
     });
     for (const e of extra) if (e) raw.push(e);
 
-    if (lost) {
-      // keep whatever complete list we had rather than replace it with a worse
-      // one, and try again on the next open
-      const kept = cacheGetStale('pairs');
-      if (kept && kept.length > raw.length) raw = kept;
-    } else if (raw.length) {
-      cacheSet('pairs', raw);
-    }
+    // Every exchange has to have contributed something. Falling back to an
+    // older list is not an option here - the older list is how this went wrong
+    // in the first place.
+    const full = !lost && FACTORIES.every(f => by[f.n] > 0);
+    MARKET_COMPLETE = full;
+    if (full) cacheSet('pairs', { pairs: raw, by: by });
+    else console.warn('market incomplete', by, 'failures:', lost);
   }
   const edges = {}, tokens = [], seen = {};
   for (const pr of raw) {
@@ -308,4 +323,4 @@ async function poolPrice(token){
   return await bondPrice(token).catch(() => null);
 }
 
-export { DEC, cacheGet, cacheGetStale, cacheSet, graph, mapLimit, poolPrice, txCandidates };
+export { DEC, cacheGet, cacheGetStale, cacheSet, graph, mapLimit, marketComplete, poolPrice, txCandidates };
