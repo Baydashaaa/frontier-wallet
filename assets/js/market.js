@@ -1,4 +1,4 @@
-import { FACTORIES, LCD, amt, getJSON, smart } from './chain.js';
+import { EXTRA_PAIRS, FACTORIES, LCD, amt, getJSON, smart } from './chain.js';
 
 /* ---------------- discovery and pricing ----------------
    The chain has no "which CW20 does this address hold" endpoint. Balances live
@@ -29,6 +29,14 @@ function cacheGet(k){
     if (r && Date.now() - r.t < CACHE_TTL) return r.v;
   } catch (e) {}
   return null;
+}
+// the same entry, ignoring its age - used only when a fresh build came back
+// worse than what we already had
+function cacheGetStale(k){
+  try {
+    const r = JSON.parse(localStorage.getItem('fw:' + CACHE_GEN + ':' + k) || 'null');
+    return r ? r.v : null;
+  } catch (e) { return null; }
 }
 function cacheSet(k, v){
   try { localStorage.setItem('fw:' + CACHE_GEN + ':' + k, JSON.stringify({ t: Date.now(), v: v })); } catch (e) {}
@@ -105,20 +113,28 @@ async function graph(){
   let raw = cacheGet('pairs');
   if (!raw) {
     raw = [];
+    // Anything that fails here makes the picture incomplete, and an incomplete
+    // picture must not be written down - a missing deep pool does not read as
+    // "missing", it reads as a confident wrong price.
+    let lost = 0;
     await Promise.all(FACTORIES.map(async f => {
       if (f.k === 'code') {
         // Every pool of this exchange is an instance of one code, so the chain
         // can list them and we never have to believe the factory.
         const addrs = await contractsByCode(f.code);
-        const got = await mapLimit(addrs, 12, async c => {
+        if (!addrs.length) { lost += 1; return; }
+        const got = await mapLimit(addrs, 8, async c => {
           try {
             const r = await smart(c, { pool: {} });
             const d = (r && r.data) || {};
             if (!d.asset1 || d.reserve1 === undefined) return null;
             return { p: c, i: [d.asset1, d.asset2] };
-          } catch (e) { return null; }
+          } catch (e) { return 'fail'; }
         });
-        for (const g of got) if (g) raw.push(g);
+        for (const g of got) {
+          if (g === 'fail') lost += 1;
+          else if (g) raw.push(g);
+        }
         return;
       }
       let start = null;
@@ -126,7 +142,8 @@ async function graph(){
         const q = { pairs: { limit: 30 } };
         if (start) q.pairs.start_after = start;
         let r;
-        try { r = await smart(f.a, q); } catch (e) { break; }
+        // a page we could not read is not the end of the list
+        try { r = await smart(f.a, q); } catch (e) { lost += 1; break; }
         const chunk = (r.data && r.data.pairs) || [];
         if (!chunk.length) break;
         for (const p of chunk) raw.push({ p: p.contract_addr, i: p.asset_infos });
@@ -134,7 +151,29 @@ async function graph(){
         if (chunk.length < 30) break;
       }
     }));
-    if (raw.length) cacheSet('pairs', raw);
+
+    // pools that no factory lists, read the same way as the rest
+    const extra = await mapLimit(EXTRA_PAIRS, 4, async c => {
+      try {
+        const r = await smart(c, { pool: {} });
+        const d = (r && r.data) || {};
+        if (d.asset1 && d.reserve1 !== undefined) return { p: c, i: [d.asset1, d.asset2] };
+        if (Array.isArray(d.assets) && d.assets.length === 2) {
+          return { p: c, i: d.assets.map(a => a.info) };
+        }
+        return null;
+      } catch (e) { lost += 1; return null; }
+    });
+    for (const e of extra) if (e) raw.push(e);
+
+    if (lost) {
+      // keep whatever complete list we had rather than replace it with a worse
+      // one, and try again on the next open
+      const kept = cacheGetStale('pairs');
+      if (kept && kept.length > raw.length) raw = kept;
+    } else if (raw.length) {
+      cacheSet('pairs', raw);
+    }
   }
   const edges = {}, tokens = [], seen = {};
   for (const pr of raw) {
@@ -269,4 +308,4 @@ async function poolPrice(token){
   return await bondPrice(token).catch(() => null);
 }
 
-export { DEC, cacheGet, cacheSet, graph, mapLimit, poolPrice, txCandidates };
+export { DEC, cacheGet, cacheGetStale, cacheSet, graph, mapLimit, poolPrice, txCandidates };

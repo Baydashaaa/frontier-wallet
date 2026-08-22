@@ -1,5 +1,5 @@
 import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js';
-import { DEC, cacheGet, cacheSet, graph, mapLimit, poolPrice, txCandidates } from './market.js';
+import { DEC, cacheGet, cacheGetStale, cacheSet, graph, mapLimit, poolPrice, txCandidates } from './market.js';
 import { $, go } from './shell.js';
 
 async function tokenRow(c, addr, known){
@@ -164,9 +164,15 @@ async function loadBalances(addr){
     // remember the CW20 contracts that came back with something, so the next
     // open starts from the answer. A token spent down to zero simply drops out
     // of the list next time, because this is rewritten from the full sweep.
-    const held = firstRound.filter(c => found.some(r => r.contract === c))
+    // Only ever add. A sweep that came back short would otherwise erase a real
+    // holding from the list, and the next open would not look for it at all -
+    // which is exactly how UST1 disappeared instead of merely arriving late.
+    // A token spent to zero costs one wasted query per open, which is cheap
+    // next to forgetting one you still own.
+    const held = (cacheGetStale('held:' + addr) || [])
+      .concat(found.map(r => r.contract).filter(Boolean))
       .concat(hits.map(h => h.c));
-    cacheSet('held:' + addr, held.filter((c, i, a) => a.indexOf(c) === i));
+    cacheSet('held:' + addr, held.filter((c, i, a) => c && a.indexOf(c) === i));
     renderTokens(list, found, px, '');
   } catch (e) {
     list.innerHTML = '<li class="empty">Could not reach the chain: ' + (e.message || e) + '</li>';

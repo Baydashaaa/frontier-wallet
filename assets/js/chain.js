@@ -44,6 +44,12 @@ const FACTORIES = [
   { a: 'terra1ejpgvv7g3hj0u6fpcnxhflqp84g0w3cnaskqkg5733ygwlmf963sfchsea', k: 'ts', n: 'CL8Y' },
   { a: 'terra1ypwj6sw25g0qcykv7mzmcvsndvx56r3yrgkaw3fds7yzwl7fwwcsnxkeh7', k: 'code', n: 'Garuda', code: 10907 }
 ];
+// Pools that exist on chain but appear in no factory listing. Reserves are
+// read the same way as any other pool; only the discovery is manual.
+const EXTRA_PAIRS = [
+  'terra1treu8r8908lsr8r48yc85rdp7mk52vuukugw2x9z9a7h6085hens5sphtw',   // VIMA
+  'terra1cf0fxnvhcmsqnw8levj3vrhrq3nxgfmc86w9d6pxyeghqyrkgj2spgqarl'    // DO
+];
 const THIN_LUNC = 500000;   // below this the quote is real but barely tradeable
 const IPFS = 'https://ipfs.io/ipfs/';
 
@@ -103,14 +109,24 @@ function paintIcons(root){
 const smart = (addr, msg) =>
   getJSON(LCD + '/cosmwasm/wasm/v1/contract/' + addr + '/smart/' + btoa(JSON.stringify(msg)));
 
-async function getJSON(url, ms = 12000){
-  const c = new AbortController();
-  const t = setTimeout(() => c.abort(), ms);
-  try {
-    const r = await fetch(url, { signal:c.signal });
-    if (!r.ok) throw new Error(url.split('/').pop() + ' -> ' + r.status);
-    return await r.json();
-  } finally { clearTimeout(t); }
+// A public node under load answers 429 or simply takes too long. One such
+// answer used to be indistinguishable from "there is nothing more here", which
+// is how a partial market got mistaken for the whole one.
+async function getJSON(url, ms = 12000, tries = 3){
+  let last;
+  for (let i = 0; i < tries; i++) {
+    const c = new AbortController();
+    const t = setTimeout(() => c.abort(), ms);
+    try {
+      const r = await fetch(url, { signal:c.signal });
+      if (!r.ok) throw new Error(url.split('/').pop() + ' -> ' + r.status);
+      return await r.json();
+    } catch (e) {
+      last = e;
+      if (i < tries - 1) await new Promise(z => setTimeout(z, 400 * (i + 1)));
+    } finally { clearTimeout(t); }
+  }
+  throw last;
 }
 const amt = (raw, dec) => Number(raw || 0) / Math.pow(10, dec);
 const fmt = v => v.toLocaleString('en-US', { maximumFractionDigits: v < 1 ? 6 : 2 });
@@ -123,4 +139,4 @@ async function prices(){
   } catch (e) { return {}; }
 }
 
-export { CW20, FACTORIES, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd };
+export { CW20, EXTRA_PAIRS, FACTORIES, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd };
