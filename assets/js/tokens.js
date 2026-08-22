@@ -15,12 +15,24 @@ async function tokenRow(c, addr, known){
     DEC['cw20:' + c] = d.decimals;
     const v = amt(bal.data && bal.data.balance, d.decimals);
     if (!(v > 0)) return null;
-    const [pr, logo] = await Promise.all([
-      poolPrice(c).catch(() => null),
-      chainLogo(c, mkt).catch(() => null)
-    ]);
-    return { sym: d.symbol, v: v, note: d.name, logo: logo || null, pool: pr, contract: c };
+    // No pricing here. A balance and a logo are two cheap reads; a price is a
+    // thousand, and making the row wait on them is what left the screen empty.
+    const logo = await chainLogo(c, mkt).catch(() => null);
+    return { sym: d.symbol, v: v, note: d.name, logo: logo || null, pool: null, contract: c };
   } catch (e) { return null; }   // a dead contract must not take the screen down
+}
+
+// Prices whatever rows are on screen and redraws once. Called after each
+// render, so an early list gets its numbers as soon as the market is readable.
+let PRICING = 0;
+async function priceRows(list, found, px){
+  const mine = ++PRICING;
+  const todo = found.filter(r => r.contract && !r.pool && !px[r.sym]);
+  if (!todo.length) return;
+  const got = await mapLimit(todo, 6, r => poolPrice(r.contract).catch(() => null));
+  if (mine !== PRICING) return;   // a newer pass has started, this one is stale
+  todo.forEach((r, i) => { r.pool = got[i] || null; });
+  renderTokens(list, found, px, LAST.hint);
 }
 
 const HOME_NOTE = 'LUNC and USTC use a price feed. Everything else is priced from pools on chain, ' +
@@ -133,6 +145,10 @@ async function loadBalances(addr){
     }
 
     // the seeded few first, so the screen is useful within a second
+    // Balances are already in hand at this point - put them on screen before
+    // anything that talks to a pool.
+    renderTokens(list, found, px, 'Reading your tokens.');
+
     // What this address held last time, asked first. A wallet's contents
     // hardly change between openings, so this is nearly always the whole list,
     // and it arrives in one round instead of after five hundred queries.
@@ -144,6 +160,7 @@ async function loadBalances(addr){
     renderTokens(list, found, px, remembered.length
       ? 'Checking for anything new.'
       : 'Checking the rest of the market for tokens you hold. First open takes a moment.');
+    priceRows(list, found, px);   // deliberately not awaited
 
     // then everything that trades anywhere, which is the part nobody should
     // have to maintain by hand
@@ -177,6 +194,7 @@ async function loadBalances(addr){
       .concat(found.map(r => r.contract).filter(Boolean))
       .concat(hits.map(h => h.c));
     cacheSet('held:' + addr, held.filter((c, i, a) => c && a.indexOf(c) === i));
+    await priceRows(list, found, px);
     renderTokens(list, found, px, marketComplete() ? '' :
       'Could not read every exchange just now, so some prices may be based on ' +
       'the wrong pool. Reopening usually fixes it.');
