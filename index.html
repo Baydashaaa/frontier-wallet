@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@400;500;600;700&family=Rajdhani:wght@600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/css/app.css?v=a737ebb0">
+<link rel="stylesheet" href="assets/css/app.css?v=0fb00800">
 </head>
 <body>
 <div id="rt"></div>
@@ -239,6 +239,45 @@
   <p class="tiny" id="home-note"></p>
 </section>
 
+<section class="step wpad" id="st-send">
+  <div class="bar">
+    <div class="back" data-go="home"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></div>
+  </div>
+  <h1>Send LUNC</h1>
+  <p class="lede">Native LUNC only for now. Tokens follow once this is proven.</p>
+
+  <div class="field">
+    <label>Recipient</label>
+    <textarea id="send-to" autocomplete="off" autocapitalize="off" spellcheck="false"
+      style="min-height:76px" placeholder="terra1..."></textarea>
+  </div>
+
+  <div class="field">
+    <label>Amount <span id="send-avail" class="tiny" data-raw="0"></span></label>
+    <div style="display:flex;gap:8px;align-items:center">
+      <input id="send-amt" type="text" inputmode="decimal" placeholder="0.000000"
+        autocomplete="off" style="flex:1">
+      <button class="dust" id="send-max" type="button">max</button>
+    </div>
+  </div>
+
+  <div class="field">
+    <label>Memo, optional</label>
+    <input id="send-memo" type="text" autocomplete="off" placeholder="">
+  </div>
+
+  <div class="warn">
+    <svg viewBox="0 0 24 24"><path d="M12 9v4"/><path d="M12 17h.01"/><circle cx="12" cy="12" r="9"/></svg>
+    <p>Exchanges usually require a memo. Sending without one can lose the deposit,
+    and no wallet can recover it.</p>
+  </div>
+
+  <div id="send-out"></div>
+
+  <div class="grow"></div>
+  <button class="btn solid" id="send-review">Check what this would cost</button>
+</section>
+
 <section class="step wpad" id="st-stake">
   <div class="head" style="margin:6px 4px 14px"><h2>Staking</h2><span id="stk-count"></span></div>
   <div id="stk-body"><div class="empty">Loading</div></div>
@@ -289,6 +328,6 @@
 </section>
 
 <script src="vendor/telegram-web-app.js"></script>
-<script type="module" src="assets/js/app.js?v=a737ebb0"></script>
+<script type="module" src="assets/js/app.js?v=0fb00800"></script>
 </body>
 </html>

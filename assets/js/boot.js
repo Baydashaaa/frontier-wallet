@@ -1,9 +1,10 @@
-import { finish } from './crypto.js?v=a737ebb0';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=a737ebb0';
-import { $, bip39, buzz, dropKeyboard, go, libs, report, tap } from './shell.js?v=a737ebb0';
-import { S } from './state.js?v=a737ebb0';
-import { Store, decryptSeed, saveWallet, short, showStore } from './storage.js?v=a737ebb0';
-import { openWallet } from './tokens.js?v=a737ebb0';
+import { amt, fmt } from './chain.js?v=0fb00800';
+import { finish } from './crypto.js?v=0fb00800';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=0fb00800';
+import { $, bip39, buzz, dropKeyboard, go, libs, report, tap } from './shell.js?v=0fb00800';
+import { S } from './state.js?v=0fb00800';
+import { Store, decryptSeed, saveWallet, short, showStore } from './storage.js?v=0fb00800';
+import { luncRaw, openWallet } from './tokens.js?v=0fb00800';
 
 /* ---------------- unlock ---------------- */
 let tries = 0;
@@ -48,8 +49,16 @@ $('#act-recv').addEventListener('click', () => {
   if (a && navigator.clipboard) navigator.clipboard.writeText(a).then(() => buzz('success'));
   alert(a || 'no address');
 });
-$('#act-send').addEventListener('click', () =>
-  alert('Sending is not built yet. It needs the burn tax added on top of the fee, which is the next piece of work.'));
+$('#act-send').addEventListener('click', () => {
+  // hand the send screen the balance it is allowed to spend
+  const el = $('#send-avail');
+  if (el) {
+    const raw = luncRaw() || 0;
+    el.dataset.raw = String(raw);
+    el.textContent = raw ? '\u00b7 ' + fmt(amt(raw, 6)) + ' available' : '';
+  }
+  go('send');
+});
 
 $('#btn-lock').addEventListener('click', () => {
   S.MNEMONIC = null; S.PASS = null;

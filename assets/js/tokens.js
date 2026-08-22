@@ -1,6 +1,6 @@
-import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=a737ebb0';
-import { DEC, cacheGet, cacheGetStale, cacheSet, graph, mapLimit, marketComplete, poolPrice, txCandidates } from './market.js?v=a737ebb0';
-import { $, go } from './shell.js?v=a737ebb0';
+import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=0fb00800';
+import { DEC, cacheGet, cacheGetStale, cacheSet, graph, mapLimit, marketComplete, poolPrice, txCandidates } from './market.js?v=0fb00800';
+import { $, go } from './shell.js?v=0fb00800';
 
 async function tokenRow(c, addr, known){
   try {
@@ -36,6 +36,10 @@ async function tokenRow(c, addr, known){
 
 // Prices whatever rows are on screen and redraws once. Called after each
 // render, so an early list gets its numbers as soon as the market is readable.
+// what the send screen is allowed to offer as "max"
+let LUNC_RAW = 0;
+const luncRaw = () => LUNC_RAW;
+
 let PRICING = 0;
 async function priceRows(list, found, px){
   const mine = ++PRICING;
@@ -142,6 +146,7 @@ async function loadBalances(addr){
       if (NATIVE[b.denom]) {
         const m = NATIVE[b.denom];
         found.push({ sym: m.sym, v: amt(b.amount, m.dec), note: '' });
+        if (b.denom === 'uluna') LUNC_RAW = Number(b.amount);
       } else if (b.denom.startsWith('ibc/')) {
         let sym = 'IBC', note = b.denom.slice(4, 12) + '\u2026';
         try {
@@ -258,4 +263,4 @@ function openWallet(addr){
   loadStaking(addr);
 }
 
-export { openWallet };
+export { luncRaw, openWallet };
