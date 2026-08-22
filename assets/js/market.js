@@ -310,9 +310,48 @@ async function bondPrice(token){
   };
 }
 
+// Ask every factory whether it holds this exact pair. TerraSwap shaped ones
+// take asset_infos; Garuda names the sides asset1 and asset2. A factory that
+// does not have the pair answers with an error, which is a normal answer here.
+async function directPairs(token){
+  const want = [];
+  await Promise.all(FACTORIES.map(async f => {
+    const q = f.k === 'code'
+      ? { pair: { asset1: { cw20: token }, asset2: { native: 'uluna' } } }
+      : { pair: { asset_infos: [
+          { token: { contract_addr: token } },
+          { native_token: { denom: 'uluna' } }
+        ] } };
+    let r;
+    try { r = await smart(f.a, q); } catch (e) { return; }
+    const d = (r && r.data) || {};
+    const addr = d.contract_addr || d.contract || d.pair;
+    if (addr) want.push(addr);
+  }));
+  return want;
+}
+
+// A one hop route built by hand, so the existing pricing code can read it.
+async function priceDirect(token){
+  const pairs = await directPairs(token);
+  if (!pairs.length) return null;
+  const priced = (await Promise.all(pairs.map(p => priceRoute([
+    { node: 'cw20:' + token },
+    { node: LUNC_KEY, pair: p }
+  ]).catch(() => null)))).filter(Boolean);
+  if (!priced.length) return null;
+  priced.sort((a, b) => b.depth - a.depth);
+  return priced[0];
+}
+
 async function poolPrice(token){
+  // the cheap question first - it answers for most tokens
+  const direct = await priceDirect(token).catch(() => null);
+  if (direct) return direct;
+
+  // no direct pool anywhere, so now it is worth knowing the whole market
   const g = await graph();
-  const rs = routesToLunc(g, 'cw20:' + token, 3, 12);
+  const rs = routesToLunc(g, 'cw20:' + token, 3, 6);
   const priced = rs.length
     ? (await Promise.all(rs.map(r => priceRoute(r).catch(() => null)))).filter(Boolean)
     : [];
