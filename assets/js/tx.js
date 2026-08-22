@@ -1,6 +1,6 @@
-import { LCD, amt, fmt, getJSON } from './chain.js?v=0fb00800';
-import { $, buzz, go, tap } from './shell.js?v=0fb00800';
-import { S } from './state.js?v=0fb00800';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=e0dbb982';
+import { $, buzz, go, tap } from './shell.js?v=e0dbb982';
+import { S } from './state.js?v=e0dbb982';
 
 /* ---------------- protobuf ----------------
    Written out by hand because cosmjs is several hundred kilobytes and this is
@@ -60,7 +60,9 @@ const b64 = b => btoa(String.fromCharCode.apply(null, b));
 /* ---------------- chain facts ---------------- */
 const CHAIN = 'columbus-5';
 const GAS_PRICE = 28.325;        // uluna per gas unit
-const GAS_SAFETY = 1.5;          // simulation is a floor, not a promise
+// You pay for gas you declare, not gas you burn, so this is money not
+// insurance. Station's own ratio on the same transfer is 1.276.
+const GAS_SAFETY = 1.3;
 
 let TAX = null;
 async function burnTaxRate(){
@@ -123,7 +125,8 @@ async function simulateGas(body, auth){
    Everything a real send would do, stopping one step short of broadcasting.
 */
 async function dryRunNative(from, to, denom, human, memo, mnemonic){
-  const rate = await burnTaxRate();
+  // kept for display only; a send must not fail because this endpoint moved
+  const rate = await burnTaxRate().catch(() => 0);
   const [acc, key] = await Promise.all([account(from), keyOf(mnemonic)]);
   const raw = Math.floor(Number(human) * 1e6);
   if (!(raw > 0)) throw new Error('amount must be greater than zero');
@@ -134,17 +137,20 @@ async function dryRunNative(from, to, denom, human, memo, mnemonic){
   const used = await simulateGas(first.body, first.auth);
   const gas = Math.ceil(used * GAS_SAFETY);
   const gasFee = Math.ceil(gas * GAS_PRICE);
-  const tax = Math.ceil(raw * rate);
+  // The burn tax is not added here. On this chain it is charged as gas, and
+  // the simulator above already counted it - that is why a plain send comes
+  // back at a quarter million gas instead of eighty thousand.
+  const tax = 0;
 
   // and the transaction as it would actually be signed
   const real = nativeSendTx(from, to, denom, raw, memo, key.pub, acc.seq,
-    [{ denom: 'uluna', amount: String(gasFee + tax) }], gas);
+    [{ denom: 'uluna', amount: String(gasFee) }], gas);
   const doc = signDoc(real.body, real.auth, CHAIN, acc.num);
   const sig = key.node.sign(key.sha256(doc));
 
   return {
     rate: rate, amount: raw, tax: tax, gas: gas, gasUsed: used, gasFee: gasFee,
-    total: raw + tax + gasFee,
+    total: raw + gasFee,
     seq: acc.seq, num: acc.num,
     bytes: txRaw(real.body, real.auth, [sig]).length,
     signed: sig.length === 64
@@ -189,9 +195,8 @@ async function review(){
     const over = d.total > avail;
     out.innerHTML =
       line('Amount', fmt(amt(d.amount, 6)) + ' LUNC') +
-      line('Burn tax ' + (d.rate * 100).toFixed(2) + '%', fmt(amt(d.tax, 6)) + ' LUNC') +
-      line('Gas (' + d.gasUsed.toLocaleString() + ' simulated, ' + d.gas.toLocaleString() + ' requested)',
-           fmt(amt(d.gasFee, 6)) + ' LUNC') +
+      line('Fee \u00b7 ' + d.gas.toLocaleString() + ' gas at ' + GAS_PRICE +
+           ' (burn tax included)', fmt(amt(d.gasFee, 6)) + ' LUNC') +
       line('Leaves your wallet', fmt(amt(d.total, 6)) + ' LUNC', true) +
       line('Recipient gets', fmt(amt(d.amount, 6)) + ' LUNC', true) +
       (over ? '<div class="sbad">More than this address holds - ' +
@@ -205,12 +210,13 @@ async function review(){
   }
 }
 
+// Nothing proportional is left in the fee, so max is a subtraction. The gas a
+// send needs barely moves with the amount, so a fixed allowance is honest
+// here, and the review recomputes the real figure anyway.
 function fillMax(){
   const avail = luncOf();
-  const rate = TAX === null ? 0.015 : TAX;
-  // a rough gas allowance; the review recomputes it properly
-  const gasFee = Math.ceil(250000 * GAS_SAFETY * GAS_PRICE);
-  const raw = Math.floor((avail - gasFee) / (1 + rate));
+  const gasFee = Math.ceil(330000 * GAS_PRICE);
+  const raw = Math.floor(avail - gasFee);
   $('#send-amt').value = raw > 0 ? (raw / 1e6).toFixed(6) : '0';
   tap();
 }
