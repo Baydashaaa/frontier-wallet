@@ -1,9 +1,9 @@
-import { finish } from './crypto.js';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js';
-import { $, bip39, buzz, dropKeyboard, go, libs, report, tap } from './shell.js';
-import { S } from './state.js';
-import { Store, decryptSeed, saveWallet, short, showStore } from './storage.js';
-import { openWallet } from './tokens.js';
+import { finish } from './crypto.js?v=df52f729';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=df52f729';
+import { $, bip39, buzz, dropKeyboard, go, libs, report, tap } from './shell.js?v=df52f729';
+import { S } from './state.js?v=df52f729';
+import { Store, decryptSeed, saveWallet, short, showStore } from './storage.js?v=df52f729';
+import { openWallet } from './tokens.js?v=df52f729';
 
 /* ---------------- unlock ---------------- */
 let tries = 0;
