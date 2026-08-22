@@ -52,7 +52,10 @@ function renderTokens(list, found, px, hint){
           ? t.pool.hops + ' hops \u00b7 narrowest leg ' + fmt(t.pool.depth) + ' LUNC'
           : (t.pool.depth < THIN_LUNC ? 'thin pool, ' : 'pool ') + fmt(t.pool.depth) + ' LUNC';
     }
-    return { t: t, fiat: fiat, sub: sub };
+    // A curve states its own price and is not a route, so it is never shaky.
+    // Everything else that had to pass through a link this thin is a guess.
+    const shaky = !!(t.pool && !t.pool.bond && t.pool.depth < THIN_LUNC);
+    return { t: t, fiat: fiat, sub: sub, shaky: shaky };
   });
 
   // by value, not by count - a hundred dollars belongs above eight cents no
@@ -71,7 +74,8 @@ function renderTokens(list, found, px, hint){
       iconHTML(t) +
       '<div class="row-main"><div class="row-name">' + t.sym + '</div>' +
       '<div class="row-amt">' + fmt(t.v) + (t.note ? ' \u00b7 ' + t.note : '') + '</div></div>' +
-      '<div class="row-val"><div class="row-fiat">' + (r.fiat !== null ? usd(r.fiat) : '\u2014') + '</div>' +
+      '<div class="row-val"><div class="row-fiat' + (r.shaky ? ' soft' : '') + '">' +
+      (r.fiat !== null ? (r.shaky ? '\u2248' : '') + usd(r.fiat) : '\u2014') + '</div>' +
       '<div class="row-sub"' + (t.pool && t.pool.depth < THIN_LUNC ? ' style="color:var(--gold)"' : '') +
       '>' + r.sub + '</div></div></li>';
   }).join('') : '<li class="empty">' +
