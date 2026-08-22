@@ -1,4 +1,4 @@
-import { $ } from './shell.js?v=8432cd31';
+import { $ } from './shell.js?v=55e782cc';
 
 /* ---------------- chain reads ---------------- */
 const LCD = 'https://terra-classic-lcd.publicnode.com';
@@ -119,10 +119,18 @@ async function getJSON(url, ms = 12000, tries = 3){
     const t = setTimeout(() => c.abort(), ms);
     try {
       const r = await fetch(url, { signal:c.signal });
-      if (!r.ok) throw new Error(url.split('/').pop() + ' -> ' + r.status);
+      if (!r.ok) {
+        const err = new Error(url.split('/').pop() + ' -> ' + r.status);
+        // 4xx is the node answering. A smart query for a pair that does not
+        // exist comes back 400, and asking twice more does not conjure it up.
+        // 429 is the exception: that one means "later", not "no".
+        err.final = r.status >= 400 && r.status < 500 && r.status !== 429;
+        throw err;
+      }
       return await r.json();
     } catch (e) {
       last = e;
+      if (e && e.final) break;
       if (i < tries - 1) await new Promise(z => setTimeout(z, 400 * (i + 1)));
     } finally { clearTimeout(t); }
   }

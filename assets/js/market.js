@@ -1,4 +1,4 @@
-import { EXTRA_PAIRS, FACTORIES, LCD, amt, getJSON, smart } from './chain.js?v=8432cd31';
+import { EXTRA_PAIRS, FACTORIES, LCD, amt, getJSON, smart } from './chain.js?v=55e782cc';
 
 /* ---------------- discovery and pricing ----------------
    The chain has no "which CW20 does this address hold" endpoint. Balances live
@@ -314,6 +314,10 @@ async function bondPrice(token){
 // take asset_infos; Garuda names the sides asset1 and asset2. A factory that
 // does not have the pair answers with an error, which is a normal answer here.
 async function directPairs(token){
+  // Which factories hold this pair changes when someone creates a pool, not
+  // between two openings of a wallet.
+  const hit = cacheGet('pair:' + token);
+  if (hit) return hit;
   const want = [];
   await Promise.all(FACTORIES.map(async f => {
     const q = f.k === 'code'
@@ -328,6 +332,7 @@ async function directPairs(token){
     const addr = d.contract_addr || d.contract || d.pair;
     if (addr) want.push(addr);
   }));
+  if (want.length) cacheSet('pair:' + token, want);
   return want;
 }
 

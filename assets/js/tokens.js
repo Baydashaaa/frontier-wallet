@@ -1,6 +1,6 @@
-import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=8432cd31';
-import { DEC, cacheGet, cacheGetStale, cacheSet, graph, mapLimit, marketComplete, poolPrice, txCandidates } from './market.js?v=8432cd31';
-import { $, go } from './shell.js?v=8432cd31';
+import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=55e782cc';
+import { DEC, cacheGet, cacheGetStale, cacheSet, graph, mapLimit, marketComplete, poolPrice, txCandidates } from './market.js?v=55e782cc';
+import { $, go } from './shell.js?v=55e782cc';
 
 async function tokenRow(c, addr, known){
   try {
@@ -29,7 +29,7 @@ async function priceRows(list, found, px){
   const mine = ++PRICING;
   const todo = found.filter(r => r.contract && !r.pool && !px[r.sym]);
   if (!todo.length) return;
-  const got = await mapLimit(todo, 6, r => poolPrice(r.contract).catch(() => null));
+  const got = await mapLimit(todo, 10, r => poolPrice(r.contract).catch(() => null));
   if (mine !== PRICING) return;   // a newer pass has started, this one is stale
   todo.forEach((r, i) => { r.pool = got[i] || null; });
   renderTokens(list, found, px, LAST.hint);
