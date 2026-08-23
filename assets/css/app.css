@@ -487,3 +487,26 @@ textarea{resize:none;min-height:110px;line-height:1.8}
    Приглушённый - значит «это прошлая цифра, идёт проверка». Не спиннер:
    число остаётся читаемым, потому что оно всё ещё верное. */
 .bal-value.stale{color:var(--muted);transition:color .35s ease}
+
+/* ══ patch67: NFT ══
+   Префикс hm-, потому что .seg уже занят экраном создания кошелька. */
+.hm-seg{display:flex;border:1px solid var(--border);border-radius:12px;overflow:hidden;
+  background:var(--surface);margin:0 0 14px}
+.hm-seg-b{flex:1;background:none;border:0;color:var(--muted);font-family:inherit;font-weight:600;
+  font-size:11px;letter-spacing:.14em;text-transform:uppercase;padding:11px 6px;cursor:pointer;
+  position:relative;transition:color .18s}
+.hm-seg-b.on{color:#E8F0FF}
+.hm-seg-b.on::after{content:'';position:absolute;left:14%;right:14%;bottom:0;height:2px;
+  background:linear-gradient(90deg,#7B5CFF,#00D4FF)}
+.hm-seg-n{font-family:'Rajdhani',sans-serif;font-weight:700;margin-left:6px;color:var(--muted)}
+
+.nft-grid{display:grid;grid-template-columns:1fr 1fr;gap:11px;margin-bottom:14px}
+.nft-card{border:1px solid var(--border);border-radius:14px;overflow:hidden;background:var(--surface)}
+.nft-art{aspect-ratio:1;position:relative;background:linear-gradient(150deg,#1B2338,#12182A);
+  display:grid;place-items:center;overflow:hidden}
+.nft-art img{width:100%;height:100%;object-fit:cover;display:block}
+.nft-art .ph{font-family:'Rajdhani',sans-serif;font-weight:700;font-size:26px;color:#2C3A57}
+.nft-meta{padding:9px 10px 11px;min-width:0}
+.nft-id{font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nft-col{font-size:10px;color:var(--muted);letter-spacing:.06em;margin-top:2px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

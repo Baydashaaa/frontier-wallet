@@ -43,7 +43,7 @@
   #fw-splash .fw-seam{animation:none}
 }
 </style>
-<link rel="stylesheet" href="assets/css/app.css?v=07b1d070">
+<link rel="stylesheet" href="assets/css/app.css?v=89f7f685">
 </head>
 <body>
 <div id="rt"></div>
@@ -309,9 +309,19 @@
   <div class="ads" id="ads" hidden><div class="ads-track" id="ads-track"></div><div class="ads-ticks" id="ads-ticks"></div></div>
 <div class="head"><h2>Core assets</h2></div>
 <div class="core" id="core"></div>
-<div class="head"><h2>Tokens</h2><div class="head-r"><button class="dust" id="dust-toggle" type="button">hide $0</button><span id="tok-count"></span></div></div>
+<div class="hm-seg" id="hm-seg">
+    <button class="hm-seg-b on" data-pane="tok" type="button">Tokens</button>
+    <button class="hm-seg-b" data-pane="nft" type="button">NFT<span class="hm-seg-n" id="nft-count"></span></button>
+  </div>
+  <div id="pane-tok">
+  <div class="head"><h2>Tokens</h2><div class="head-r"><button class="dust" id="dust-toggle" type="button">hide $0</button><span id="tok-count"></span></div></div>
   <ul class="rows" id="tok-list"><li class="empty">Loading balances</li></ul>
   <p class="tiny" id="home-note"></p>
+  </div>
+  <div id="pane-nft" hidden>
+    <div class="nft-grid" id="nft-grid"></div>
+    <p class="tiny" id="nft-note"></p>
+  </div>
 </section>
 
 <!-- ================= SWAP ================= -->
@@ -454,9 +464,10 @@
 </section>
 
 <script src="vendor/telegram-web-app.js"></script>
-<script type="module" src="assets/js/app.js?v=07b1d070"></script>
-<script src="assets/js/ads.js?v=07b1d070"></script>
-<script type="module" src="assets/js/swap.js?v=07b1d070"></script>
-<script type="module" src="assets/js/activity.js?v=07b1d070"></script>
+<script type="module" src="assets/js/app.js?v=89f7f685"></script>
+<script src="assets/js/ads.js?v=89f7f685"></script>
+<script type="module" src="assets/js/swap.js?v=89f7f685"></script>
+<script type="module" src="assets/js/activity.js?v=89f7f685"></script>
+<script type="module" src="assets/js/nft.js?v=89f7f685"></script>
 </body>
 </html>
