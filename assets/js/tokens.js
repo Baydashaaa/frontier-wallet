@@ -1,6 +1,6 @@
-import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=fc2aeca3';
-import { DEC, cacheGet, cacheGetStale, cacheSet, graph, mapLimit, marketComplete, poolPrice, txCandidates } from './market.js?v=fc2aeca3';
-import { $, go } from './shell.js?v=fc2aeca3';
+import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=ba96a9b2';
+import { DEC, cacheGet, cacheGetStale, cacheSet, graph, mapLimit, marketComplete, poolPrice, txCandidates } from './market.js?v=ba96a9b2';
+import { $, go } from './shell.js?v=ba96a9b2';
 
 async function tokenRow(c, addr, known){
   try {

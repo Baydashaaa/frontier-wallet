@@ -1,4 +1,4 @@
-import { $ } from './shell.js?v=fc2aeca3';
+import { $ } from './shell.js?v=ba96a9b2';
 
 /* ---------------- chain reads ---------------- */
 const LCD = 'https://terra-classic-lcd.publicnode.com';
@@ -70,18 +70,42 @@ async function chainLogo(contract, mkt){
 }
 
 const attr = v => String(v).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+
+// A ticker with no local file is a fact about this build, not a network
+// hiccup, so asking again on the next render only produces the same 404. What
+// is remembered per symbol: the url that worked, or 0 for "there is nothing".
+const ICON_KEY = 'fw:icons';
+let ICON_SEEN = {};
+try { ICON_SEEN = JSON.parse(localStorage.getItem(ICON_KEY) || '{}') || {}; } catch (e) {}
+let ICON_T = null;
+function iconRemember(sym, val){
+  if (!sym || ICON_SEEN[sym] === val) return;
+  ICON_SEEN[sym] = val;
+  // written in one go rather than on every icon
+  clearTimeout(ICON_T);
+  ICON_T = setTimeout(function () {
+    try { localStorage.setItem(ICON_KEY, JSON.stringify(ICON_SEEN)); } catch (e) {}
+  }, 500);
+}
 const localIcon = sym => 'assets/tokens/' + sym.toUpperCase().replace(/[^A-Z0-9]/g, '');
 
 // Three chances per icon, in order: the contract's own logo, a local file
 // named after the ticker, the first letter. The letter is what renders first,
 // so a slow image never leaves an empty hole in the row.
 function iconHTML(t){
+  const sym = t.sym;
+  const known = ICON_SEEN[sym];
   const cands = [];
   if (t.logo) cands.push(t.logo);
-  const base = localIcon(t.sym);
-  cands.push(base + '.png', base + '.svg', base + '.webp');
-  return '<span class="sym" style="background:' + swatch(t.sym) + '" ' +
-         'data-icons="' + attr(cands.join('|')) + '">' + t.sym[0] + '</span>';
+  if (typeof known === 'string') {
+    cands.push(known);                       // уже знаем, какой файл есть
+  } else if (known !== 0) {
+    const base = localIcon(sym);             // ещё не искали
+    cands.push(base + '.png', base + '.svg', base + '.webp');
+  }                                          // known === 0 - файла нет, не ищем
+  return '<span class="sym" style="background:' + swatch(sym) + '" ' +
+         'data-sym="' + attr(sym) + '" ' +
+         'data-icons="' + attr(cands.join('|')) + '">' + sym[0] + '</span>';
 }
 
 // The tint is dropped the moment a real image loads, because most token art is
@@ -89,9 +113,14 @@ function iconHTML(t){
 function paintIcons(root){
   root.querySelectorAll('.sym[data-icons]').forEach(el => {
     const cands = el.getAttribute('data-icons').split('|').filter(Boolean);
+    const sym = el.getAttribute('data-sym') || '';
     let i = 0;
     (function next(){
-      if (i >= cands.length) return;
+      if (i >= cands.length) {
+        // every candidate failed, and that will still be true next time
+        if (sym) iconRemember(sym, 0);
+        return;
+      }
       const img = new Image();
       img.alt = '';
       img.onload = () => {
@@ -99,6 +128,9 @@ function paintIcons(root){
         el.removeAttribute('style');
         el.classList.add('has-img');
         el.appendChild(img);
+        // only local paths are worth remembering: a contract logo arrives as a
+        // data url, and storing those would fill the quota with base64
+        if (sym && cands[i].indexOf('assets/') === 0) iconRemember(sym, cands[i]);
       };
       img.onerror = () => { i += 1; next(); };
       img.src = cands[i];
