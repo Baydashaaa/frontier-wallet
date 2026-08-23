@@ -457,3 +457,26 @@ textarea{resize:none;min-height:110px;line-height:1.8}
   background:var(--sw-zones,linear-gradient(90deg,#7B5CFF,#00D4FF))}
 .sw-hint{margin-top:9px;font-size:11px;line-height:1.4;color:var(--muted)}
 .sw-hint b{font-family:'Rajdhani',sans-serif;font-weight:600;color:#00FFB0}
+
+/* ══ patch59: история ══ */
+.ac-row{display:flex;align-items:center;gap:12px;padding:12px 4px;
+  border-bottom:1px solid rgba(30,42,66,.6);cursor:pointer}
+.ac-row:last-child{border-bottom:0}
+.ac-row:active{background:rgba(22,30,48,.7)}
+.ac-mark{width:34px;height:34px;border-radius:11px;flex:none;display:grid;place-items:center;
+  background:#161E30;border:1px solid #1E2A42}
+.ac-mark svg{width:17px;height:17px;stroke:var(--muted);stroke-width:1.7;fill:none;
+  stroke-linecap:round;stroke-linejoin:round}
+.ac-mark.out svg{stroke:#FF6B8A}
+.ac-mark.in svg{stroke:#00FFB0}
+.ac-mark.swap svg{stroke:#00D4FF}
+.ac-mark.fail{border-color:rgba(255,107,138,.45)}
+.ac-mid{flex:1;min-width:0}
+.ac-t{font-size:14px;font-weight:600;letter-spacing:.02em}
+.ac-s{font-size:11px;color:var(--muted);font-family:'Rajdhani',sans-serif;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ac-r{text-align:right;flex:none}
+.ac-v{font-family:'Rajdhani',sans-serif;font-weight:700;font-size:15px}
+.ac-v.in{color:#00FFB0}
+.ac-w{font-size:10px;color:var(--muted);font-family:'Rajdhani',sans-serif}
+.ac-bad{color:var(--red);font-size:11px;font-family:'Rajdhani',sans-serif}

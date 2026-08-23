@@ -43,7 +43,7 @@
   #fw-splash .fw-sweep{display:none}
 }
 </style>
-<link rel="stylesheet" href="assets/css/app.css?v=5b9aae53">
+<link rel="stylesheet" href="assets/css/app.css?v=d0167347">
 </head>
 <body>
 <div id="rt"></div>
@@ -411,7 +411,8 @@
 
 <section class="step wpad" id="st-activity">
   <div class="head" style="margin:6px 4px 14px"><h2>Activity</h2></div>
-  <div class="empty">Transaction history needs an indexer, not the LCD, so it is not wired up yet. Everything else on this screen would be guesswork, so there is nothing here rather than something fake.</div>
+  <div id="ac-list"><div class="empty">Loading</div></div>
+  <p class="tiny" id="ac-note"></p>
 </section>
 
 <section class="step wpad" id="st-settings">
@@ -454,8 +455,9 @@
 </section>
 
 <script src="vendor/telegram-web-app.js"></script>
-<script type="module" src="assets/js/app.js?v=5b9aae53"></script>
-<script src="assets/js/ads.js?v=5b9aae53"></script>
-<script type="module" src="assets/js/swap.js?v=5b9aae53"></script>
+<script type="module" src="assets/js/app.js?v=d0167347"></script>
+<script src="assets/js/ads.js?v=d0167347"></script>
+<script type="module" src="assets/js/swap.js?v=d0167347"></script>
+<script type="module" src="assets/js/activity.js?v=d0167347"></script>
 </body>
 </html>
