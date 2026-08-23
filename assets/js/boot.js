@@ -1,10 +1,10 @@
-import { amt, fmt } from './chain.js?v=7d2ce533';
-import { finish } from './crypto.js?v=7d2ce533';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=7d2ce533';
-import { $, bip39, buzz, dropKeyboard, go, libs, report, tap } from './shell.js?v=7d2ce533';
-import { S } from './state.js?v=7d2ce533';
-import { Store, decryptSeed, saveWallet, short, showStore } from './storage.js?v=7d2ce533';
-import { luncRaw, openWallet } from './tokens.js?v=7d2ce533';
+import { amt, fmt } from './chain.js?v=d03e1e60';
+import { finish } from './crypto.js?v=d03e1e60';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=d03e1e60';
+import { $, bip39, buzz, dropKeyboard, go, libs, report, tap } from './shell.js?v=d03e1e60';
+import { S } from './state.js?v=d03e1e60';
+import { Store, decryptSeed, saveWallet, short, showStore } from './storage.js?v=d03e1e60';
+import { luncRaw, openWallet } from './tokens.js?v=d03e1e60';
 
 /* ---------------- unlock ---------------- */
 let tries = 0;
@@ -166,3 +166,14 @@ $('#btn-import').addEventListener('click', async () => {
     console.error('[import]', e);
   }
 });
+
+// Desktop Telegram hands the webview a window wider than what is actually
+// visible, so anything centred lands off to one side. expand() puts the
+// viewport into a state the app can trust, and the ready() before it is what
+// tells Telegram the page is up.
+(function () {
+  const tg = window.Telegram && window.Telegram.WebApp;
+  if (!tg) return;
+  try { tg.ready(); } catch (e) {}
+  try { tg.expand(); } catch (e) {}
+})();
