@@ -1,4 +1,4 @@
-import { $ } from './shell.js?v=87cece76';
+import { $ } from './shell.js?v=516423f7';
 
 /* ---------------- chain reads ---------------- */
 const LCD = 'https://terra-classic-lcd.publicnode.com';
@@ -145,9 +145,18 @@ const smart = (addr, msg) =>
 // the same time, so nothing ever capped the total - and the total is what a
 // public node answers 500 to. This gate is the only place that sees them all.
 const GATE = { n: 0, max: 6, q: [] };
-function slot(){
-  if (GATE.n < GATE.max) { GATE.n += 1; return Promise.resolve(); }
-  return new Promise(function (res) { GATE.q.push(res); });
+// A public node counts requests per minute, not requests at once, so six in
+// flight still delivers a hundred inside ten seconds - which is what it was
+// answering 429 to. The queue paces as well as caps: one start every PACE_MS.
+const PACE_MS = 120;
+const PACE = { next: 0 };
+async function slot(){
+  if (GATE.n < GATE.max) GATE.n += 1;
+  else await new Promise(function (res) { GATE.q.push(res); });
+  const now = Date.now();
+  const at = Math.max(now, PACE.next);
+  PACE.next = at + PACE_MS;
+  if (at > now) await nap(at - now);
 }
 function release(){
   const next = GATE.q.shift();

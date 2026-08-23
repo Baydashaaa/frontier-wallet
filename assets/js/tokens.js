@@ -1,6 +1,6 @@
-import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=87cece76';
-import { DEC, cacheGet, cacheGetStale, cacheSet, graph, mapLimit, marketComplete, poolPrice, txCandidates } from './market.js?v=87cece76';
-import { $, go } from './shell.js?v=87cece76';
+import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=516423f7';
+import { DEC, cacheGet, cacheGetStale, cacheSet, graph, mapLimit, marketComplete, poolPrice, txCandidates } from './market.js?v=516423f7';
+import { $, go } from './shell.js?v=516423f7';
 
 async function tokenRow(c, addr, known){
   try {
@@ -255,8 +255,17 @@ async function loadBalances(addr){
     const [g, txc] = await Promise.all([graph(), txCandidates(addr).catch(() => [])]);
     const seed = {};
     for (const c of firstRound) seed[c] = 1;
-    const rest = g.tokens.concat(txc)
+    // The full sweep asks balance{} of every contract the market knows - two
+    // hundred requests, which is where the 429s came from. What it finds
+    // barely changes between openings, and the remembered list above already
+    // covers everything this address holds, so the sweep runs on a schedule
+    // instead of on every open. A new token arriving is worth an hour's wait.
+    const SWEEP_EVERY = 60 * 60 * 1000;
+    const sweptAt = Number(cacheGetStale('swept:' + addr) || 0);
+    const skipSweep = Date.now() - sweptAt < SWEEP_EVERY;
+    const rest = skipSweep ? [] : g.tokens.concat(txc)
       .filter((c, i, a) => !seed[c] && a.indexOf(c) === i);
+    if (!skipSweep) cacheSet('swept:' + addr, Date.now());
 
     const bals = await mapLimit(rest, 14, async c => {
       try { const r = await smart(c, { balance: { address: addr } }); return (r.data && r.data.balance) || '0'; }
