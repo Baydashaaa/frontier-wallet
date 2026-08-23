@@ -74,11 +74,14 @@ for f in files:
     del before
 print('  stamped imports in %d modules' % stamped)
 
+# Every script tag, not a list of names. A module added later and forgotten
+# here is the same stale-cache bug this file exists to prevent, except quieter.
+SRC = re.compile(r'src="assets/js/([a-z0-9_-]+\.js)"')
 s = io.open(IX, encoding='utf-8').read()
 s = s.replace('href="assets/css/app.css"', 'href="assets/css/app.css?v=%s"' % tag)
-s = s.replace('src="assets/js/app.js"', 'src="assets/js/app.js?v=%s"' % tag)
+s, n = SRC.subn(lambda m: 'src="assets/js/%s?v=%s"' % (m.group(1), tag), s)
 io.open(IX, 'w', encoding='utf-8').write(s)
-print('  stamped index.html')
+print('  stamped index.html, %d script tags' % n)
 
 # ---------------------------------------------------------------- verify ---
 bad = []
@@ -87,9 +90,14 @@ for f in files:
     for m in re.finditer(r"(?:from|import) '\./([a-z0-9_-]+\.js)(\?v=[0-9a-f]+)?'", s):
         if not m.group(2):
             bad.append('%s -> %s' % (f, m.group(1)))
+# the same check for the html, where the entry modules are named
+s = io.open(IX, encoding='utf-8').read()
+for m in re.finditer(r'src="assets/js/([a-z0-9_-]+\.js)(\?v=[0-9a-f]+)?"', s):
+    if not m.group(2):
+        bad.append('index.html -> %s' % m.group(1))
 if bad:
-    print('\nthese imports did not get a version, which defeats the point:')
+    print('\nthese did not get a version, which defeats the point:')
     for b in bad:
         print('  ' + b)
     sys.exit(1)
-print('every internal import carries the version')
+print('every internal import and script tag carries the version')
