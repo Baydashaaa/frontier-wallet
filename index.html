@@ -28,6 +28,11 @@
   transform:translate(-50%,-56%);border-radius:50%;pointer-events:none;
   background:radial-gradient(circle,rgba(123,92,255,.30) 0%,rgba(123,92,255,.10) 45%,rgba(123,92,255,0) 70%);
   animation:fw-breathe 3.4s ease-in-out infinite}
+/* On a desktop window the flex box is as wide as the screen, and a mark that
+   only caps its own width still sits centred in all of it. The column has to
+   be capped, not just the logo. */
+#fw-splash .fw-inner{width:100%;max-width:520px;padding:0 20px;
+  display:flex;flex-direction:column;align-items:center}
 #fw-splash .fw-mark{position:relative;width:100%;max-width:250px;aspect-ratio:1200/431;
   margin:0 auto;overflow:hidden;animation:fw-rise .85s cubic-bezier(.2,.9,.3,1) both}
 #fw-splash .fw-mark img{position:absolute;display:block;border:0}
@@ -49,6 +54,7 @@
 <div id="rt"></div>
 <div id="fw-splash">
   <div class="fw-halo"></div>
+  <div class="fw-inner">
   <div class="fw-mark">
     <img src="assets/letters/F.png"  alt="" style="left:0.0%;top:37.82%;width:8.17%;height:23.43%">
     <img src="assets/letters/R.png"  alt="" style="left:12.5%;top:38.05%;width:8.83%;height:23.67%">
@@ -61,6 +67,7 @@
     <img src="assets/letters/R2.png" alt="" style="left:91.42%;top:37.82%;width:8.58%;height:23.9%">
   </div>
   <div class="fw-tag">Terra Classic Wallet</div>
+  </div>
 </div>
 <script>
 // Заставка уходит, когда приложение готово, но не раньше MIN - иначе на быстром
