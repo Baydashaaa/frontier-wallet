@@ -17,8 +17,13 @@
    Все классы с префиксом fw-: короткие имена вроде .bar уже заняты в app.css. */
 #fw-splash{position:fixed;inset:0;z-index:9999;background:#0B0F1A;
   display:flex;flex-direction:column;align-items:center;justify-content:center;
-  transition:opacity .5s ease}
+  transition:opacity .26s ease}
+/* Two layers of text fading through each other reads as a glitch, so the
+   wordmark leaves first and the backdrop follows. By the time anything below
+   is visible, the splash has nothing left to show. */
 #fw-splash.gone{opacity:0;pointer-events:none}
+#fw-splash.gone .fw-mark,#fw-splash.gone .fw-tag{opacity:0;
+  transition:opacity .12s ease}
 #fw-splash .fw-halo{position:absolute;top:50%;left:50%;width:460px;height:460px;
   transform:translate(-50%,-56%);border-radius:50%;pointer-events:none;
   background:radial-gradient(circle,rgba(123,92,255,.30) 0%,rgba(123,92,255,.10) 45%,rgba(123,92,255,0) 70%);
@@ -26,21 +31,16 @@
 #fw-splash .fw-mark{position:relative;width:100%;max-width:250px;aspect-ratio:1200/431;
   margin:0 auto;overflow:hidden;animation:fw-rise .85s cubic-bezier(.2,.9,.3,1) both}
 #fw-splash .fw-mark img{position:absolute;display:block;border:0}
-#fw-splash .fw-seam{animation:fw-glow 2.4s ease-in-out .5s infinite}
-#fw-splash .fw-sweep{position:absolute;inset:0;pointer-events:none;mix-blend-mode:screen;
-  background:linear-gradient(102deg,transparent 40%,rgba(0,212,255,.34) 50%,transparent 60%);
-  animation:fw-sweep 2.6s ease-in-out 1s infinite}
+#fw-splash .fw-seam{animation:fw-glow 2s ease-in-out .4s infinite}
 #fw-splash .fw-tag{position:relative;margin-top:20px;font-family:'Exo 2',system-ui,sans-serif;
   font-size:10.5px;letter-spacing:.34em;text-transform:uppercase;color:#6B82A8;
   animation:fw-rise .85s ease-out .3s both}
 @keyframes fw-rise{from{opacity:0;transform:translateY(10px) scale(.97)}to{opacity:1;transform:none}}
-@keyframes fw-glow{0%,100%{filter:brightness(1)}50%{filter:brightness(1.85)}}
-@keyframes fw-sweep{0%{transform:translateX(-115%)}55%,100%{transform:translateX(115%)}}
+@keyframes fw-glow{0%,100%{filter:brightness(1)}50%{filter:brightness(2.1)}}
 @keyframes fw-breathe{0%,100%{opacity:.85}50%{opacity:1}}
 @media (prefers-reduced-motion:reduce){
   #fw-splash .fw-mark,#fw-splash .fw-tag,#fw-splash .fw-halo,
-  #fw-splash .fw-seam,#fw-splash .fw-sweep{animation:none}
-  #fw-splash .fw-sweep{display:none}
+  #fw-splash .fw-seam{animation:none}
 }
 </style>
 <link rel="stylesheet" href="assets/css/app.css?v=8217ef19">
@@ -59,7 +59,6 @@
     <img src="assets/letters/I.png"  alt="" style="left:70.42%;top:37.82%;width:1.92%;height:23.43%">
     <img src="assets/letters/E.png"  alt="" style="left:78.17%;top:37.82%;width:8.58%;height:23.43%">
     <img src="assets/letters/R2.png" alt="" style="left:91.42%;top:37.82%;width:8.58%;height:23.9%">
-    <i class="fw-sweep"></i>
   </div>
   <div class="fw-tag">Terra Classic Wallet</div>
 </div>
@@ -74,7 +73,7 @@
     if (done) return; done = true;
     setTimeout(function () {
       el.classList.add('gone');
-      setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 540);
+      setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 300);
     }, Math.max(0, MIN - (Date.now() - t0)));
   }
   window.addEventListener('fw:ready', hide);
