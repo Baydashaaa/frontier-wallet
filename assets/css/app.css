@@ -301,3 +301,65 @@ textarea{resize:none;min-height:110px;line-height:1.8}
 /* the armed state of the send button */
 .btn.solid.danger{background:linear-gradient(180deg,#E8564A,#C93A2E);
   box-shadow:0 8px 24px rgba(232,86,74,.28)}
+
+/* ══ patch47: консоль на 4 ячейки ══ */
+.acts{grid-template-columns:repeat(4,1fr);gap:1px;padding:1px;margin-bottom:22px;
+  background:linear-gradient(120deg,rgba(123,92,255,.55),rgba(0,212,255,.35) 55%,rgba(30,42,66,.9));
+  clip-path:polygon(14px 0,calc(100% - 14px) 0,100% 14px,100% calc(100% - 14px),
+    calc(100% - 14px) 100%,14px 100%,0 calc(100% - 14px),0 14px)}
+.act{background:#12182A;padding:15px 2px 12px;gap:8px;font-size:9.5px;letter-spacing:.12em;
+  text-transform:uppercase;font-weight:600;color:#6B82A8;white-space:nowrap;
+  position:relative;overflow:hidden}
+.act:active{transform:none}
+.act::after{content:'';position:absolute;left:50%;bottom:0;width:0;height:70px;
+  transform:translateX(-50%);border-radius:50%;filter:blur(18px);background:#7B5CFF;
+  opacity:0;transition:width .25s,opacity .25s}
+.act:active::after{width:120px;opacity:.5}
+.act i{width:auto;height:auto;background:none;border:none;border-radius:0;box-shadow:none;
+  position:relative;z-index:1}
+.act svg{width:21px;height:21px;stroke:#E8F0FF}
+#act-swap{color:#E8F0FF}
+#act-swap svg{stroke:#00D4FF}
+#act-swap::before{content:'';position:absolute;left:0;right:0;bottom:0;height:2px;z-index:1;
+  background:linear-gradient(90deg,transparent,#00D4FF,transparent)}
+
+/* ══ patch47: реклама ══ */
+.ads{position:relative;border:1px solid #1E2A42;border-radius:16px;overflow:hidden;
+  background:#161E30;margin:0 0 22px}
+.ads[hidden]{display:none}
+.ads-track{display:flex;transition:transform .55s cubic-bezier(.4,.14,.2,1)}
+.ad{flex:0 0 100%;min-height:104px;padding:15px 16px 17px;display:flex;flex-direction:column;
+  gap:5px;justify-content:center;position:relative;cursor:pointer}
+.ad .tag{font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:#6B82A8;font-weight:600}
+.ad h3{margin:0;font-family:'Rajdhani',sans-serif;font-size:20px;font-weight:600;color:#E8F0FF}
+.ad p{margin:0;font-size:12px;color:#A9BBDD;line-height:1.45;max-width:78%}
+.ad .glow{position:absolute;right:-40px;top:-40px;width:150px;height:150px;border-radius:50%;
+  filter:blur(46px);opacity:.5}
+.ad .cta{position:absolute;right:14px;bottom:14px;width:30px;height:30px;border-radius:10px;
+  border:1px solid #1E2A42;display:grid;place-items:center;background:rgba(11,15,26,.5)}
+.ad .cta svg{width:14px;height:14px;stroke:#E8F0FF;stroke-width:1.8;fill:none;stroke-linecap:round}
+.ads-ticks{position:absolute;left:16px;bottom:12px;display:flex;gap:5px;z-index:2}
+.ads-ticks .t{width:16px;height:2px;border-radius:2px;background:rgba(107,130,168,.4);overflow:hidden}
+.ads-ticks .t i{display:block;height:100%;width:0;background:#00D4FF}
+.ads-ticks .t.on i{width:100%;transition:width 6s linear}
+.ads-ticks .t.done i{width:100%}
+@media (prefers-reduced-motion:reduce){.ads-track{transition:none}.ads-ticks .t.on i{width:100%}}
+
+/* ══ patch48: опорные активы ══ */
+.core{display:grid;grid-template-columns:1fr 1px 1fr;border:1px solid #1E2A42;border-radius:16px;
+  background:linear-gradient(160deg,rgba(123,92,255,.09),rgba(18,24,42,0) 55%),#12182A;
+  overflow:hidden;margin:0 0 22px;position:relative;min-height:96px}
+.core::before{content:'';position:absolute;left:0;right:0;top:0;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(123,92,255,.7),rgba(0,212,255,.5),transparent)}
+.core-seam{background:linear-gradient(180deg,transparent,#1E2A42 20%,#1E2A42 80%,transparent)}
+.core-cell{padding:15px 15px 13px;display:flex;flex-direction:column;gap:3px;min-width:0}
+.core-top{display:flex;align-items:center;gap:8px}
+.core-top img,.core-top i,.core-top .ic{width:24px;height:24px;border-radius:50%;flex:none;
+  display:block;object-fit:cover}
+.core-dot{width:24px;height:24px;border-radius:50%;flex:none;
+  background:linear-gradient(140deg,#22304C,#161E30);border:1px solid #1E2A42}
+.core-sym{font-size:13px;font-weight:600;letter-spacing:.06em;color:#E8F0FF}
+.core-usd{font-family:'Rajdhani',sans-serif;font-weight:700;font-size:23px;color:#fff;margin-top:6px}
+.core-usd.soft{color:var(--muted)}
+.core-qty{font-family:'Rajdhani',sans-serif;font-size:12px;color:var(--muted);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

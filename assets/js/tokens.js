@@ -1,6 +1,6 @@
-import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=f478a2b1';
-import { DEC, cacheGet, cacheGetStale, cacheSet, graph, mapLimit, marketComplete, poolPrice, txCandidates } from './market.js?v=f478a2b1';
-import { $, go } from './shell.js?v=f478a2b1';
+import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=85fa5acd';
+import { DEC, cacheGet, cacheGetStale, cacheSet, graph, mapLimit, marketComplete, poolPrice, txCandidates } from './market.js?v=85fa5acd';
+import { $, go } from './shell.js?v=85fa5acd';
 
 async function tokenRow(c, addr, known){
   try {
@@ -62,6 +62,30 @@ let LAST = { found: [], px: {}, hint: '' };
 // anything that rounds to $0.00 on screen counts as dust
 const DUST = 0.005;
 
+// LUNC and USTC are pinned above the list. Both slots stay put even when one is
+// empty: a zero on a core asset is exactly the number a user came to check, and
+// a panel that changes shape with the balance is a panel you cannot trust.
+const CORE_SYMS = ['LUNC', 'USTC'];
+function renderCore(rows){
+  const box = $('#core');
+  if (!box) return;
+  box.innerHTML = CORE_SYMS.map((sym, n) => {
+    const r = rows.find(x => x.t.sym === sym);
+    const has = !!r && r.fiat !== null;
+    return (n ? '<div class="core-seam"></div>' : '') +
+      '<div class="core-cell">' +
+        '<div class="core-top">' +
+          (r ? iconHTML(r.t) : '<span class="core-dot"></span>') +
+          '<span class="core-sym">' + sym + '</span>' +
+        '</div>' +
+        '<div class="core-usd' + (r && r.shaky ? ' soft' : '') + '">' +
+          (has ? (r.shaky ? '\u2248' : '') + usd(r.fiat) : '\u2014') +
+        '</div>' +
+        '<div class="core-qty">' + fmt(r ? r.t.v : 0) + '</div>' +
+      '</div>';
+  }).join('');
+  paintIcons(box);
+}
 function renderTokens(list, found, px, hint){
   LAST = { found: found, px: px, hint: hint };
 
@@ -94,7 +118,10 @@ function renderTokens(list, found, px, hint){
   const total = rows.reduce((a, r) => a + (r.fiat || 0), 0);
   // "no price" is not the same as "worth nothing" - TCO has no pool yet, and
   // hiding 4.8 million of it behind a dust filter would be a lie
-  const shown = HIDE_DUST ? rows.filter(r => r.fiat === null || r.fiat >= DUST) : rows;
+  renderCore(rows);
+  // pinned above, so the list must not repeat them
+  const rest = rows.filter(r => CORE_SYMS.indexOf(r.t.sym) < 0);
+  const shown = HIDE_DUST ? rest.filter(r => r.fiat === null || r.fiat >= DUST) : rest;
 
   list.innerHTML = shown.length ? shown.map(r => {
     const t = r.t;
@@ -107,13 +134,13 @@ function renderTokens(list, found, px, hint){
       '<div class="row-sub"' + (t.pool && t.pool.depth < THIN_LUNC ? ' style="color:var(--gold)"' : '') +
       '>' + r.sub + '</div></div></li>';
   }).join('') : '<li class="empty">' +
-    (rows.length ? 'Everything priced here rounds to zero. Turn off hide $0 to see it.'
+    (rest.length ? 'Everything priced here rounds to zero. Turn off hide $0 to see it.'
                  : 'This address holds nothing yet.') + '</li>';
 
   paintIcons(list);
   // the hidden ones are still counted, so the number never lies about the wallet
-  $('#tok-count').textContent = !rows.length ? ''
-    : (shown.length < rows.length ? shown.length + ' of ' + rows.length : String(rows.length));
+  $('#tok-count').textContent = !rest.length ? ''
+    : (shown.length < rest.length ? shown.length + ' of ' + rest.length : String(rest.length));
   $('#bal-total').textContent = usd(total);
   $('#home-note').textContent = hint || HOME_NOTE;
 }

@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@400;500;600;700&family=Rajdhani:wght@600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/css/app.css?v=f478a2b1">
+<link rel="stylesheet" href="assets/css/app.css?v=85fa5acd">
 </head>
 <body>
 <div id="rt"></div>
@@ -231,10 +231,14 @@
   <div class="acts">
     <button class="act" id="act-recv"><i><svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg></i>Receive</button>
     <button class="act" id="act-send"><i><svg viewBox="0 0 24 24"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg></i>Send</button>
-    <button class="act" id="act-stake"><i><svg viewBox="0 0 24 24"><path d="M12 3 3 8l9 5 9-5-9-5Z"/><path d="m3 16 9 5 9-5"/><path d="m3 12 9 5 9-5"/></svg></i>Stake</button>
+    <button class="act" id="act-swap"><i><svg viewBox="0 0 24 24"><path d="M4 8h13"/><path d="m14 4 4 4-4 4"/><path d="M20 16H7"/><path d="m10 12-4 4 4 4"/></svg></i>Swap</button>
+<button class="act" id="act-stake"><i><svg viewBox="0 0 24 24"><path d="M12 3 3 8l9 5 9-5-9-5Z"/><path d="m3 16 9 5 9-5"/><path d="m3 12 9 5 9-5"/></svg></i>Stake</button>
   </div>
 
-  <div class="head"><h2>Tokens</h2><div class="head-r"><button class="dust" id="dust-toggle" type="button">hide $0</button><span id="tok-count"></span></div></div>
+  <div class="ads" id="ads" hidden><div class="ads-track" id="ads-track"></div><div class="ads-ticks" id="ads-ticks"></div></div>
+<div class="head"><h2>Core assets</h2></div>
+<div class="core" id="core"></div>
+<div class="head"><h2>Tokens</h2><div class="head-r"><button class="dust" id="dust-toggle" type="button">hide $0</button><span id="tok-count"></span></div></div>
   <ul class="rows" id="tok-list"><li class="empty">Loading balances</li></ul>
   <p class="tiny" id="home-note"></p>
 </section>
@@ -328,6 +332,7 @@
 </section>
 
 <script src="vendor/telegram-web-app.js"></script>
-<script type="module" src="assets/js/app.js?v=f478a2b1"></script>
+<script type="module" src="assets/js/app.js?v=85fa5acd"></script>
+<script src="assets/js/ads.js"></script>
 </body>
 </html>
