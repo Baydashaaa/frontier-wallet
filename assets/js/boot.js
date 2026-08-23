@@ -1,10 +1,10 @@
-import { amt, fmt } from './chain.js?v=85fa5acd';
-import { finish } from './crypto.js?v=85fa5acd';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=85fa5acd';
-import { $, bip39, buzz, dropKeyboard, go, libs, report, tap } from './shell.js?v=85fa5acd';
-import { S } from './state.js?v=85fa5acd';
-import { Store, decryptSeed, saveWallet, short, showStore } from './storage.js?v=85fa5acd';
-import { luncRaw, openWallet } from './tokens.js?v=85fa5acd';
+import { amt, fmt } from './chain.js?v=d5ba4548';
+import { finish } from './crypto.js?v=d5ba4548';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=d5ba4548';
+import { $, bip39, buzz, dropKeyboard, go, libs, report, tap } from './shell.js?v=d5ba4548';
+import { S } from './state.js?v=d5ba4548';
+import { Store, decryptSeed, saveWallet, short, showStore } from './storage.js?v=d5ba4548';
+import { luncRaw, openWallet } from './tokens.js?v=d5ba4548';
 
 /* ---------------- unlock ---------------- */
 let tries = 0;
@@ -44,12 +44,6 @@ $('#pu').addEventListener('input', async () => {
 document.querySelectorAll('#tabs .tab').forEach(b =>
   b.addEventListener('click', () => go(b.dataset.tab)));
 $('#act-stake').addEventListener('click', () => go('stake'));
-// Своп пока уводит на Terraport. Когда появится свой экран - меняем на go('swap').
-$('#act-swap').addEventListener('click', () => {
-  const url = 'https://terraport.finance/swap';
-  if (window.Telegram?.WebApp?.openLink) Telegram.WebApp.openLink(url);
-  else window.open(url, '_blank', 'noopener');
-});
 $('#act-recv').addEventListener('click', () => {
   const a = S.SAVED && S.SAVED.addr;
   if (a && navigator.clipboard) navigator.clipboard.writeText(a).then(() => buzz('success'));

@@ -39,7 +39,7 @@
   #fw-splash .bar i{width:100%}
 }
 </style>
-<link rel="stylesheet" href="assets/css/app.css?v=85fa5acd">
+<link rel="stylesheet" href="assets/css/app.css?v=d5ba4548">
 </head>
 <body>
 <div id="rt"></div>
@@ -311,6 +311,40 @@
   <p class="tiny" id="home-note"></p>
 </section>
 
+<!-- ================= SWAP ================= -->
+<section class="step wpad" id="st-swap">
+  <div class="head" style="margin:6px 4px 14px"><h2>Swap</h2><span id="sw-net"></span></div>
+
+  <div class="sw-pane">
+    <div class="sw-side">
+      <label class="sw-lbl">You pay <span class="tiny" id="sw-avail"></span></label>
+      <div class="sw-row">
+        <input id="sw-amt" type="text" inputmode="decimal" placeholder="0.000000" autocomplete="off">
+        <select id="sw-from" class="sw-pick"></select>
+      </div>
+    </div>
+
+    <button class="sw-flip" id="sw-flip" type="button" title="Flip">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M7 4v13"/><path d="m3 13 4 4 4-4"/>
+      <path d="M17 20V7"/><path d="m13 11 4-4 4 4"/></svg>
+    </button>
+
+    <div class="sw-side">
+      <label class="sw-lbl">You receive</label>
+      <div class="sw-row">
+        <div id="sw-out" class="sw-out">-</div>
+        <select id="sw-to" class="sw-pick"></select>
+      </div>
+    </div>
+  </div>
+
+  <div id="sw-detail" class="sw-detail"></div>
+  <p class="tiny" id="sw-note">Quotes come from the pool itself, not from the price list.</p>
+
+  <button class="btn solid" id="sw-go" disabled>Enter an amount</button>
+  <button class="btn quiet" data-go="home">Back</button>
+</section>
+
 <section class="step wpad" id="st-send">
   <div class="bar">
     <div class="back" data-go="home"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></div>
@@ -400,7 +434,8 @@
 </section>
 
 <script src="vendor/telegram-web-app.js"></script>
-<script type="module" src="assets/js/app.js?v=85fa5acd"></script>
+<script type="module" src="assets/js/app.js?v=d5ba4548"></script>
 <script src="assets/js/ads.js"></script>
+<script type="module" src="assets/js/swap.js"></script>
 </body>
 </html>

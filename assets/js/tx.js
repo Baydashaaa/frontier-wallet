@@ -1,6 +1,6 @@
-import { LCD, amt, fmt, getJSON } from './chain.js?v=85fa5acd';
-import { $, buzz, go, tap } from './shell.js?v=85fa5acd';
-import { S } from './state.js?v=85fa5acd';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=d5ba4548';
+import { $, buzz, go, tap } from './shell.js?v=d5ba4548';
+import { S } from './state.js?v=d5ba4548';
 
 /* ---------------- protobuf ----------------
    Written out by hand because cosmjs is several hundred kilobytes and this is
@@ -333,3 +333,57 @@ if (btn) {
 }
 
 export { dryRunNative, sendNative, burnTaxRate, b64 };
+
+/* ---------------- contract calls ----------------
+   MsgExecuteContract in both dialects this chain has carried. The field
+   numbers are the same in each - sender 1, contract 2, msg 3, funds 5 - and
+   only the type URL differs. Which one the node accepts is decided by the
+   node: the first is simulated, and a refusal falls through to the second.
+   That simulation is also what proves the encoding, because a wrong field
+   number is rejected there rather than discovered after a signature.
+*/
+const EXEC_URLS = ['/cosmwasm.wasm.v1.MsgExecuteContract',
+                   '/terra.wasm.v1beta1.MsgExecuteContract'];
+const msgExec = (sender, contract, msgJson, funds) => cat([
+  fStr(1, sender), fStr(2, contract), fBytes(3, enc.encode(msgJson)),
+  ...funds.map(c => fBytes(5, coin(c)))
+]);
+function execTx(url, sender, contract, msgObj, funds, key, seq, feeCoins, gas){
+  const body = txBody([any(url, msgExec(sender, contract, JSON.stringify(msgObj), funds))], '');
+  return { body: body, auth: authInfo(key, seq, feeCoins, gas) };
+}
+
+// Everything a real swap would do, stopping one step short of signing.
+async function execPlan(from, contract, msgObj, funds, mnemonic){
+  const [acc, key] = await Promise.all([account(from), keyOf(mnemonic)]);
+  let used = 0, url = null, last = null;
+  for (const u of EXEC_URLS) {
+    const probe = execTx(u, from, contract, msgObj, funds, key.pub, acc.seq,
+      [{ denom: 'uluna', amount: '1000000' }], 900000);
+    try { used = await simulateGas(probe.body, probe.auth); url = u; break; }
+    catch (e) { last = e; }
+  }
+  if (!url) throw new Error('the node refused this message: ' +
+    (last && last.message ? last.message : 'unknown reason'));
+  const gas = Math.ceil(used * GAS_SAFETY);
+  return { acc: acc, key: key, url: url, used: used,
+           gas: gas, gasFee: Math.ceil(gas * GAS_PRICE) };
+}
+
+async function dryRunSwap(from, contract, msgObj, funds, mnemonic){
+  const p = await execPlan(from, contract, msgObj, funds, mnemonic);
+  return { gas: p.gas, gasUsed: p.used, gasFee: p.gasFee, url: p.url };
+}
+
+// Rebuilt from scratch rather than reusing the reviewed bytes: the sequence
+// moves whenever anything else touches this account.
+async function sendSwap(from, contract, msgObj, funds, mnemonic){
+  const p = await execPlan(from, contract, msgObj, funds, mnemonic);
+  const real = execTx(p.url, from, contract, msgObj, funds, p.key.pub, p.acc.seq,
+    [{ denom: 'uluna', amount: String(p.gasFee) }], p.gas);
+  const doc = signDoc(real.body, real.auth, CHAIN, p.acc.num);
+  const sig = p.key.node.sign(p.key.sha256(doc));
+  const hash = await broadcast(txRaw(real.body, real.auth, [sig]));
+  return { hash: hash, gas: p.gas, gasFee: p.gasFee, wait: function(){ return waitFor(hash); } };
+}
+export { dryRunSwap, sendSwap };

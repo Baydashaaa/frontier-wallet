@@ -1,6 +1,6 @@
-import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=85fa5acd';
-import { DEC, cacheGet, cacheGetStale, cacheSet, graph, mapLimit, marketComplete, poolPrice, txCandidates } from './market.js?v=85fa5acd';
-import { $, go } from './shell.js?v=85fa5acd';
+import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=d5ba4548';
+import { DEC, cacheGet, cacheGetStale, cacheSet, graph, mapLimit, marketComplete, poolPrice, txCandidates } from './market.js?v=d5ba4548';
+import { $, go } from './shell.js?v=d5ba4548';
 
 async function tokenRow(c, addr, known){
   try {
@@ -172,7 +172,9 @@ async function loadBalances(addr){
     for (const b of (bank.balances || [])) {
       if (NATIVE[b.denom]) {
         const m = NATIVE[b.denom];
-        found.push({ sym: m.sym, v: amt(b.amount, m.dec), note: '' });
+        // the denom is what a swap has to name in offer_asset; the symbol is
+        // only what a human reads
+        found.push({ sym: m.sym, v: amt(b.amount, m.dec), note: '', denom: b.denom, dec: m.dec });
         if (b.denom === 'uluna') LUNC_RAW = Number(b.amount);
       } else if (b.denom.startsWith('ibc/')) {
         let sym = 'IBC', note = b.denom.slice(4, 12) + '\u2026';
@@ -182,9 +184,9 @@ async function loadBalances(addr){
           sym = (base.startsWith('u') ? base.slice(1) : base).toUpperCase();
           note = tr.denom_trace.path;
         } catch (e) {}
-        found.push({ sym: sym, v: amt(b.amount, 6), note: note });
+        found.push({ sym: sym, v: amt(b.amount, 6), note: note, denom: b.denom, dec: 6 });
       } else {
-        found.push({ sym: b.denom.toUpperCase(), v: amt(b.amount, 6), note: '' });
+        found.push({ sym: b.denom.toUpperCase(), v: amt(b.amount, 6), note: '', denom: b.denom, dec: 6 });
       }
     }
 
@@ -290,4 +292,7 @@ function openWallet(addr){
   loadStaking(addr);
 }
 
-export { luncRaw, openWallet };
+// The swap screen needs the same rows the list is drawn from, priced and all.
+// Handing back LAST.found beats asking the chain a second time.
+const heldTokens = () => LAST.found || [];
+export { heldTokens, luncRaw, openWallet };

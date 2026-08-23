@@ -363,3 +363,29 @@ textarea{resize:none;min-height:110px;line-height:1.8}
 .core-usd.soft{color:var(--muted)}
 .core-qty{font-family:'Rajdhani',sans-serif;font-size:12px;color:var(--muted);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* ══ patch51: экран обмена ══ */
+.sw-pane{position:relative;display:flex;flex-direction:column;gap:1px;margin:0 0 14px}
+.sw-side{background:#12182A;border:1px solid #1E2A42;border-radius:14px;padding:13px 14px}
+.sw-lbl{display:block;font-size:10px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--muted);margin-bottom:8px}
+.sw-row{display:flex;align-items:center;gap:10px}
+.sw-row input{flex:1;min-width:0;background:none;border:0;outline:none;color:#fff;
+  font-family:'Rajdhani',sans-serif;font-weight:700;font-size:26px;padding:0}
+.sw-out{flex:1;min-width:0;font-family:'Rajdhani',sans-serif;font-weight:700;font-size:26px;
+  color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sw-out.dim{color:var(--muted)}
+.sw-pick{flex:none;background:#161E30;border:1px solid #1E2A42;border-radius:10px;
+  color:#E8F0FF;font-family:inherit;font-size:13px;font-weight:600;padding:9px 10px;
+  max-width:44%}
+.sw-flip{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:2;
+  width:38px;height:38px;border-radius:50%;border:1px solid #1E2A42;background:#0B0F1A;
+  display:grid;place-items:center;cursor:pointer;padding:0}
+.sw-flip svg{width:17px;height:17px;stroke:#00D4FF;stroke-width:1.7;fill:none;
+  stroke-linecap:round;stroke-linejoin:round}
+.sw-flip:active{transform:translate(-50%,-50%) scale(.92)}
+.sw-detail{min-height:20px;margin:0 4px 14px;display:flex;flex-direction:column;gap:6px}
+.sw-line{display:flex;justify-content:space-between;font-size:12px;color:var(--muted)}
+.sw-line b{font-family:'Rajdhani',sans-serif;font-weight:600;color:#E8F0FF}
+.sw-line.warn b{color:var(--gold)}
+.sw-line.bad b{color:var(--red)}

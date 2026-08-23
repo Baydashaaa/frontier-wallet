@@ -1,4 +1,4 @@
-import { EXTRA_PAIRS, FACTORIES, LCD, amt, getJSON, smart } from './chain.js?v=85fa5acd';
+import { EXTRA_PAIRS, FACTORIES, LCD, amt, getJSON, smart } from './chain.js?v=d5ba4548';
 
 /* ---------------- discovery and pricing ----------------
    The chain has no "which CW20 does this address hold" endpoint. Balances live
@@ -282,7 +282,10 @@ async function priceRoute(route){
     depth = Math.min(depth, an * price);
     price = price * an / af;
   }
-  return { inLunc: price, depth: depth, hops: route.length - 1 };
+  // The route is what a swap has to execute, not just what a price was derived
+  // from. Keeping the pair addresses costs nothing here and saves finding them
+  // again with a second round of factory queries at swap time.
+  return { inLunc: price, depth: depth, hops: route.length - 1, route: route };
 }
 
 // Tokens that have not graduated to a pool still trade, against a curve. The
