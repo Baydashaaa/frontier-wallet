@@ -510,3 +510,12 @@ textarea{resize:none;min-height:110px;line-height:1.8}
 .nft-id{font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .nft-col{font-size:10px;color:var(--muted);letter-spacing:.06em;margin-top:2px;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* ══ patch68: широкое окно ══
+   Одна ширина на всё приложение. Панель вкладок раньше растягивалась на весь
+   экран, потому что прибита к краям - на телефоне это одно и то же, на
+   десктопе колонка оказывалась по центру, а вкладки по углам. */
+:root{--app-w:520px}
+.tabs{left:50%;right:auto;transform:translateX(-50%);
+  width:100%;max-width:var(--app-w)}
+.step{max-width:var(--app-w)}
