@@ -1,5 +1,5 @@
-import { $, report, tg } from './shell.js?v=ba96a9b2';
-import { S } from './state.js?v=ba96a9b2';
+import { $, report, tg } from './shell.js?v=699181ed';
+import { S } from './state.js?v=699181ed';
 
 /* ---------------- storage ----------------
    SecureStorage is backed by the iOS Keychain and the Android Keystore,
@@ -10,10 +10,19 @@ import { S } from './state.js?v=ba96a9b2';
 const KEY = 'frontier_wallet_v1';
 const Store = (() => {
   let mem = null, kind = 'memory', api = null;
-  if (tg && tg.SecureStorage && tg.isVersionAtLeast && tg.isVersionAtLeast('8.0')) {
+  // CloudStorage lands in the SDK object long before the client can answer it,
+  // so existence is not the question - the version is. Cloud storage arrived
+  // in 6.9; asking a 6.0 desktop client throws on every save.
+  const atLeast = v => !!(tg && tg.isVersionAtLeast && tg.isVersionAtLeast(v));
+  if (tg && tg.SecureStorage && atLeast('8.0')) {
     kind = 'secure'; api = tg.SecureStorage;
-  } else if (tg && tg.CloudStorage) {
+  } else if (tg && tg.CloudStorage && atLeast('6.9')) {
     kind = 'cloud'; api = tg.CloudStorage;
+  } else {
+    // Falling back to memory meant the wallet did not survive a reload on those
+    // clients. What is stored is the PIN-encrypted blob, not the phrase, so
+    // localStorage is a weaker place than the Keychain but not an open one.
+    kind = 'local';
   }
   const call = (fn, ...args) => new Promise((res, rej) => {
     try { fn.call(api, ...args, (err, val) => err ? rej(err) : res(val)); }
@@ -21,12 +30,24 @@ const Store = (() => {
   });
   return {
     get kind(){ return kind; },
-    async save(v){ if (!api) { mem = v; return; } await call(api.setItem, KEY, v); },
-    async load(){
-      if (!api) return mem;
-      try { return await call(api.getItem, KEY); } catch (e) { return null; }
+    async save(v){
+      if (api) { await call(api.setItem, KEY, v); return; }
+      if (kind === 'local') {
+        try { localStorage.setItem(KEY, v); return; }
+        catch (e) { /* private mode or a full quota - memory is what is left */ }
+      }
+      mem = v;
     },
-    async clear(){ if (!api) { mem = null; return; } try { await call(api.removeItem, KEY); } catch (e) {} }
+    async load(){
+      if (api) { try { return await call(api.getItem, KEY); } catch (e) { return null; } }
+      if (kind === 'local') { try { return localStorage.getItem(KEY); } catch (e) { return null; } }
+      return mem;
+    },
+    async clear(){
+      if (api) { try { await call(api.removeItem, KEY); } catch (e) {} return; }
+      if (kind === 'local') { try { localStorage.removeItem(KEY); } catch (e) {} return; }
+      mem = null;
+    }
   };
 })();
 

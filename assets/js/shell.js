@@ -35,7 +35,10 @@ window.addEventListener('unhandledrejection', ev => report('promise', ev.reason)
 const $$ = s => Array.from(document.querySelectorAll(s));
 const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
 if (tg) { tg.ready(); tg.expand(); }
-const tap  = () => { if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light'); };
+// The object exists on every client; the methods do not. Checking for the one
+// and calling the other is what fills the console with WebAppMethodUnsupported.
+const HAPTIC_OK = !!(tg && tg.HapticFeedback && tg.isVersionAtLeast && tg.isVersionAtLeast('6.1'));
+const tap  = () => { if (HAPTIC_OK) tg.HapticFeedback.impactOccurred('light'); };
 
 /* Telegram floats its close button over the page instead of reserving space,
    and on this build the safe-area vars come back as zero, so a floor is the
@@ -52,7 +55,7 @@ if (tg && tg.onEvent) {
     try { tg.onEvent(ev, applyInsets); } catch (e) {}
   });
 }
-const buzz = k => { if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred(k); };
+const buzz = k => { if (HAPTIC_OK) tg.HapticFeedback.notificationOccurred(k); };
 
 /* the webview keeps focus after a tap outside, so drop it by hand */
 function dropKeyboard(){
