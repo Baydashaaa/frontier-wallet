@@ -519,3 +519,9 @@ textarea{resize:none;min-height:110px;line-height:1.8}
 .tabs{left:50%;right:auto;transform:translateX(-50%);
   width:100%;max-width:var(--app-w)}
 .step{max-width:var(--app-w)}
+
+/* Десктопный вебвью Telegram отдаёт окно шире видимой части, поэтому 100%
+   центрирует по тому, чего не видно. Правильная величина - ширина вьюпорта,
+   ту же пару у высоты приложение уже использует. */
+body{width:100%;max-width:100vw;margin:0 auto}
+.tabs{max-width:min(var(--app-w),100vw)}
