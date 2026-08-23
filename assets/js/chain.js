@@ -1,4 +1,4 @@
-import { $ } from './shell.js?v=699181ed';
+import { $ } from './shell.js?v=87cece76';
 
 /* ---------------- chain reads ---------------- */
 const LCD = 'https://terra-classic-lcd.publicnode.com';
@@ -141,22 +141,46 @@ function paintIcons(root){
 const smart = (addr, msg) =>
   getJSON(LCD + '/cosmwasm/wasm/v1/contract/' + addr + '/smart/' + btoa(JSON.stringify(msg)));
 
+// One node, one queue. Every mapLimit caps its own fan-out, but several run at
+// the same time, so nothing ever capped the total - and the total is what a
+// public node answers 500 to. This gate is the only place that sees them all.
+const GATE = { n: 0, max: 6, q: [] };
+function slot(){
+  if (GATE.n < GATE.max) { GATE.n += 1; return Promise.resolve(); }
+  return new Promise(function (res) { GATE.q.push(res); });
+}
+function release(){
+  const next = GATE.q.shift();
+  if (next) next(); else GATE.n -= 1;
+}
+const nap = ms => new Promise(function (r) { setTimeout(r, ms); });
+
 // A public node under load answers 429 or simply takes too long. One such
 // answer used to be indistinguishable from "there is nothing more here", which
 // is how a partial market got mistaken for the whole one.
 async function getJSON(url, ms = 12000, tries = 3){
   let last;
   for (let i = 0; i < tries; i++) {
+    // A retry that leaves immediately is the same burst again, which is why the
+    // node was answering 500 three times instead of once.
+    if (i) await nap(200 + 300 * i * i);
     const c = new AbortController();
     const t = setTimeout(() => c.abort(), ms);
     try {
-      const r = await fetch(url, { signal:c.signal });
+      await slot();
+      let r;
+      try { r = await fetch(url, { signal:c.signal }); }
+      finally { release(); }
       if (!r.ok) {
         const err = new Error(url.split('/').pop() + ' -> ' + r.status);
         // 4xx is the node answering. A smart query for a pair that does not
         // exist comes back 400, and asking twice more does not conjure it up.
         // 429 is the exception: that one means "later", not "no".
-        err.final = r.status >= 400 && r.status < 500 && r.status !== 429;
+        // 501 is a 5xx that will never turn into anything else: the endpoint
+        // is not built on this node. denom_traces is one of those, and asking
+        // three times only made it three refusals.
+        err.final = (r.status >= 400 && r.status < 500 && r.status !== 429) ||
+                    r.status === 501;
         throw err;
       }
       return await r.json();
