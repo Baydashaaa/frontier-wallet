@@ -4,11 +4,11 @@
 // пул сам умеет ответить, сколько отдаст за конкретную сумму, с учётом
 // проскальзывания и комиссии. Считать это самому - значит показать одно
 // число, а получить другое.
-import { amt, fmt, smart } from './chain.js?v=d5ba4548';
-import { $, go, tap } from './shell.js?v=d5ba4548';
-import { heldTokens } from './tokens.js?v=d5ba4548';
-import { dryRunSwap, sendSwap } from './tx.js?v=d5ba4548';
-import { S } from './state.js?v=d5ba4548';
+import { amt, fmt, iconHTML, paintIcons, smart } from './chain.js?v=a81d3481';
+import { $, go, tap } from './shell.js?v=a81d3481';
+import { heldTokens } from './tokens.js?v=a81d3481';
+import { dryRunSwap, sendSwap } from './tx.js?v=a81d3481';
+import { S } from './state.js?v=a81d3481';
 
 const LUNC = { sym: 'LUNC', denom: 'uluna', dec: 6, native: true };
 let FROM = LUNC, TO = null, TIMER = null, SEQ = 0;
@@ -44,19 +44,61 @@ function decOf(t){
   return isFinite(d) && d > 0 ? d : 6;
 }
 
+// Gas is paid in LUNC, so spending the whole balance leaves nothing to pay
+// with. Max stops short by enough for a few transactions.
+const LUNC_RESERVE = 2;
+
+function balOf(t){
+  if (!t) return 0;
+  const row = heldTokens().find(x => x.sym === t.sym);
+  return row ? (row.v || 0) : (t.v || 0);
+}
+
+// The picker draws the same icon the token list draws, which is why the rows
+// come from heldTokens rather than being rebuilt here.
+function face(el, t){
+  const row = heldTokens().find(x => x.sym === (t && t.sym)) || t;
+  el.innerHTML = (row ? iconHTML(row) : '') +
+    '<span>' + ((t && t.sym) || 'LUNC') + '</span>' +
+    '<svg class="sw-caret" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>';
+  paintIcons(el);
+}
+
 function fillPickers(){
   const rows = heldTokens().filter(swappable);
-  const opts = t => '<option value="' + t.sym + '">' + t.sym + '</option>';
   if (!TO && rows.length) TO = rows[0];
-  $('#sw-from').innerHTML = '<option value="LUNC">LUNC</option>' + rows.map(opts).join('');
-  $('#sw-to').innerHTML = '<option value="LUNC">LUNC</option>' + rows.map(opts).join('');
-  $('#sw-from').value = FROM.sym;
-  $('#sw-to').value = TO ? TO.sym : 'LUNC';
+  face($('#sw-from'), FROM);
+  face($('#sw-to'), TO || LUNC);
   $('#sw-net').textContent = rows.length ? rows.length + ' pairs' : 'no direct pairs held';
-  const bal = FROM.sym === 'LUNC'
-    ? (heldTokens().find(x => x.sym === 'LUNC') || {}).v
-    : FROM.v;
+  const bal = balOf(FROM);
   $('#sw-avail').textContent = bal ? fmt(bal) + ' available' : '';
+}
+
+function openSheet(side){
+  const lunc = pick('LUNC') || LUNC;
+  const all = [lunc].concat(heldTokens().filter(swappable));
+  $('#sw-list').innerHTML = all.map(function (t) {
+    return '<button class="sw-item" type="button" data-sym="' + t.sym + '">' +
+      iconHTML(t) + '<span class="sw-item-s">' + t.sym + '</span>' +
+      '<span class="sw-item-v">' + fmt(t.v || 0) + '</span></button>';
+  }).join('');
+  paintIcons($('#sw-list'));
+  const sheet = $('#sw-sheet');
+  sheet.dataset.side = side;
+  sheet.hidden = false;
+}
+const closeSheet = () => { $('#sw-sheet').hidden = true; };
+
+// The slider spends a share of what is actually held, so it has nothing to say
+// until a balance is known.
+function setPct(p){
+  const bal = balOf(FROM);
+  if (!bal) return;
+  let v = bal * (p / 100);
+  if (p === 100 && FROM.denom === 'uluna') v = Math.max(0, bal - LUNC_RESERVE);
+  $('#sw-amt').value = v > 0 ? v.toFixed(6) : '';
+  $('#sw-range').value = String(p);
+  schedule();
 }
 
 function pick(sym){
@@ -128,8 +170,26 @@ async function quote(){
 const schedule = () => { clearTimeout(TIMER); TIMER = setTimeout(quote, 400); };
 
 $('#sw-amt').addEventListener('input', schedule);
-$('#sw-from').addEventListener('change', () => { FROM = pick($('#sw-from').value) || LUNC; fillPickers(); schedule(); });
-$('#sw-to').addEventListener('change', () => { TO = pick($('#sw-to').value); fillPickers(); schedule(); });
+$('#sw-from').addEventListener('click', () => { tap(); openSheet('from'); });
+$('#sw-to').addEventListener('click', () => { tap(); openSheet('to'); });
+$('#sw-close').addEventListener('click', closeSheet);
+$('#sw-sheet').addEventListener('click', e => { if (e.target.id === 'sw-sheet') closeSheet(); });
+$('#sw-list').addEventListener('click', e => {
+  const item = e.target.closest('.sw-item');
+  if (!item) return;
+  const t = pick(item.dataset.sym);
+  const side = $('#sw-sheet').dataset.side;
+  // both sides the same asset is not a trade
+  if (side === 'from') { if (TO && t && TO.sym === t.sym) TO = FROM; FROM = t || LUNC; }
+  else { if (t && FROM.sym === t.sym) FROM = TO || LUNC; TO = t; }
+  closeSheet(); tap(); fillPickers();
+  $('#sw-amt').value = ''; $('#sw-range').value = '0';
+  $('#sw-out').textContent = '-'; detail([]);
+  schedule();
+});
+$('#sw-range').addEventListener('input', () => setPct(Number($('#sw-range').value)));
+document.querySelectorAll('.sw-pct').forEach(b =>
+  b.addEventListener('click', () => { tap(); setPct(Number(b.dataset.pct)); }));
 $('#sw-flip').addEventListener('click', () => {
   tap();
   const a = FROM; FROM = TO || LUNC; TO = a;

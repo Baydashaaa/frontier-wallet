@@ -39,7 +39,7 @@
   #fw-splash .bar i{width:100%}
 }
 </style>
-<link rel="stylesheet" href="assets/css/app.css?v=d5ba4548">
+<link rel="stylesheet" href="assets/css/app.css?v=a81d3481">
 </head>
 <body>
 <div id="rt"></div>
@@ -320,7 +320,14 @@
       <label class="sw-lbl">You pay <span class="tiny" id="sw-avail"></span></label>
       <div class="sw-row">
         <input id="sw-amt" type="text" inputmode="decimal" placeholder="0.000000" autocomplete="off">
-        <select id="sw-from" class="sw-pick"></select>
+        <button class="sw-pick" id="sw-from" type="button"></button>
+      </div>
+      <input class="sw-range" id="sw-range" type="range" min="0" max="100" value="0" step="1">
+      <div class="sw-pcts">
+        <button class="sw-pct" data-pct="25" type="button">25%</button>
+        <button class="sw-pct" data-pct="50" type="button">50%</button>
+        <button class="sw-pct" data-pct="75" type="button">75%</button>
+        <button class="sw-pct" data-pct="100" type="button">Max</button>
       </div>
     </div>
 
@@ -333,7 +340,7 @@
       <label class="sw-lbl">You receive</label>
       <div class="sw-row">
         <div id="sw-out" class="sw-out">-</div>
-        <select id="sw-to" class="sw-pick"></select>
+        <button class="sw-pick" id="sw-to" type="button"></button>
       </div>
     </div>
   </div>
@@ -343,6 +350,14 @@
 
   <button class="btn solid" id="sw-go" disabled>Enter an amount</button>
   <button class="btn quiet" data-go="home">Back</button>
+
+  <div class="sw-sheet" id="sw-sheet" hidden>
+    <div class="sw-sheet-in">
+      <div class="sw-sheet-top"><span>Choose a token</span>
+        <button class="sw-x" id="sw-close" type="button">Close</button></div>
+      <div class="sw-list" id="sw-list"></div>
+    </div>
+  </div>
 </section>
 
 <section class="step wpad" id="st-send">
@@ -434,7 +449,7 @@
 </section>
 
 <script src="vendor/telegram-web-app.js"></script>
-<script type="module" src="assets/js/app.js?v=d5ba4548"></script>
+<script type="module" src="assets/js/app.js?v=a81d3481"></script>
 <script src="assets/js/ads.js"></script>
 <script type="module" src="assets/js/swap.js"></script>
 </body>
