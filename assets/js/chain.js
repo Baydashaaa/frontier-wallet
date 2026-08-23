@@ -1,4 +1,4 @@
-import { $ } from './shell.js?v=516423f7';
+import { $ } from './shell.js?v=2cc8ed19';
 
 /* ---------------- chain reads ---------------- */
 const LCD = 'https://terra-classic-lcd.publicnode.com';
@@ -138,8 +138,12 @@ function paintIcons(root){
   });
 }
 
-const smart = (addr, msg) =>
-  getJSON(LCD + '/cosmwasm/wasm/v1/contract/' + addr + '/smart/' + btoa(JSON.stringify(msg)));
+// Some questions have no second answer. A factory that does not hold a pair
+// says so with a 500 rather than a 400, and asking again three times only
+// produces three of them - so the caller can say how many times to try.
+const smart = (addr, msg, tries) =>
+  getJSON(LCD + '/cosmwasm/wasm/v1/contract/' + addr + '/smart/' + btoa(JSON.stringify(msg)),
+          12000, tries || 3);
 
 // One node, one queue. Every mapLimit caps its own fan-out, but several run at
 // the same time, so nothing ever capped the total - and the total is what a

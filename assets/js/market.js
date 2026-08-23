@@ -1,4 +1,4 @@
-import { EXTRA_PAIRS, FACTORIES, LCD, amt, getJSON, smart } from './chain.js?v=516423f7';
+import { EXTRA_PAIRS, FACTORIES, LCD, amt, getJSON, smart } from './chain.js?v=2cc8ed19';
 
 /* ---------------- discovery and pricing ----------------
    The chain has no "which CW20 does this address hold" endpoint. Balances live
@@ -330,12 +330,19 @@ async function directPairs(token){
           { native_token: { denom: 'uluna' } }
         ] } };
     let r;
-    try { r = await smart(f.a, q); } catch (e) { return; }
+    // One try. A factory that does not hold this pair answers 500 rather than
+    // 400, and the retry logic reads that as "later" - so a question with one
+    // permanent answer was being asked three times.
+    try { r = await smart(f.a, q, 1); } catch (e) { return; }
     const d = (r && r.data) || {};
     const addr = d.contract_addr || d.contract || d.pair;
     if (addr) want.push(addr);
   }));
-  if (want.length) cacheSet('pair:' + token, want);
+  // "No factory holds this pair" is an answer worth remembering. Without this
+  // every token without a pool asked every factory again on every open, which
+  // is where most of the 500s came from. A pool created in the meantime shows
+  // up when the cache expires.
+  cacheSet('pair:' + token, want);
   return want;
 }
 

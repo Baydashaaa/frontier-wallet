@@ -1,6 +1,6 @@
-import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=516423f7';
-import { DEC, cacheGet, cacheGetStale, cacheSet, graph, mapLimit, marketComplete, poolPrice, txCandidates } from './market.js?v=516423f7';
-import { $, go } from './shell.js?v=516423f7';
+import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=2cc8ed19';
+import { DEC, cacheGet, cacheGetStale, cacheSet, graph, mapLimit, marketComplete, poolPrice, txCandidates } from './market.js?v=2cc8ed19';
+import { $, go } from './shell.js?v=2cc8ed19';
 
 async function tokenRow(c, addr, known){
   try {
@@ -197,6 +197,20 @@ function renderTokens(list, found, px, hint){
 async function loadBalances(addr){
   const list = $('#tok-list');
   SWEEPING = true;
+
+  // The last complete reading, drawn before a single request goes out. It is
+  // minutes old at worst and it is replaced as soon as the chain answers - but
+  // it means the wallet opens with numbers in it instead of a blank waiting to
+  // be filled, which is the whole difference in how fast this feels.
+  try {
+    const snap = cacheGetStale('snap:' + addr);
+    if (snap && Array.isArray(snap.found) && snap.found.length) {
+      SWEEPING = false;              // that reading was complete when it was saved
+      renderTokens(list, snap.found, snap.px || {}, 'Checking for changes.');
+      SWEEPING = true;
+    }
+  } catch (e) { /* a bad snapshot is not worth failing the open over */ }
+
   try {
     const [bank, px] = await Promise.all([
       getJSON(LCD + '/cosmos/bank/v1beta1/balances/' + addr),
@@ -293,6 +307,18 @@ async function loadBalances(addr){
     // everything that could be found has been found and priced; from here the
     // total is the whole wallet
     SWEEPING = false;
+    // kept for the next open. Logos are dropped: a contract logo arrives as a
+    // base64 data url and would fill the storage quota by itself.
+    try {
+      cacheSet('snap:' + addr, {
+        found: found.map(function (t) {
+          const c = {};
+          for (const k in t) if (k !== 'logo') c[k] = t[k];
+          return c;
+        }),
+        px: px
+      });
+    } catch (e) {}
     renderTokens(list, found, px, marketComplete() ? '' :
       'Could not read every exchange just now, so some prices may be based on ' +
       'the wrong pool. Reopening usually fixes it.');
