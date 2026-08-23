@@ -480,3 +480,8 @@ textarea{resize:none;min-height:110px;line-height:1.8}
 .ac-v.in{color:#00FFB0}
 .ac-w{font-size:10px;color:var(--muted);font-family:'Rajdhani',sans-serif}
 .ac-bad{color:var(--red);font-size:11px;font-family:'Rajdhani',sans-serif}
+
+/* ══ patch62: баланс во время пересчёта ══
+   Приглушённый - значит «это прошлая цифра, идёт проверка». Не спиннер:
+   число остаётся читаемым, потому что оно всё ещё верное. */
+.bal-value.stale{color:var(--muted);transition:color .35s ease}

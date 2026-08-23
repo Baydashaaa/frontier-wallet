@@ -1,6 +1,6 @@
-import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=8217ef19';
-import { DEC, cacheGet, cacheGetStale, cacheSet, graph, mapLimit, marketComplete, poolPrice, txCandidates } from './market.js?v=8217ef19';
-import { $, go } from './shell.js?v=8217ef19';
+import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=bafc33a2';
+import { DEC, cacheGet, cacheGetStale, cacheSet, graph, mapLimit, marketComplete, poolPrice, txCandidates } from './market.js?v=bafc33a2';
+import { $, go } from './shell.js?v=bafc33a2';
 
 async function tokenRow(c, addr, known){
   try {
@@ -58,6 +58,10 @@ const HOME_NOTE = 'LUNC and USTC use a price feed. Everything else is priced fro
 let HIDE_DUST = false;
 try { HIDE_DUST = localStorage.getItem('fw:dust') === '1'; } catch (e) {}
 let LAST = { found: [], px: {}, hint: '' };
+// True while the market sweep is still running, which is exactly the window in
+// which the total is real but incomplete. TOTAL_SHOWN is the last one that was
+// not.
+let SWEEPING = false, TOTAL_SHOWN = null;
 
 // anything that rounds to $0.00 on screen counts as dust
 const DUST = 0.005;
@@ -141,7 +145,21 @@ function renderTokens(list, found, px, hint){
   // the hidden ones are still counted, so the number never lies about the wallet
   $('#tok-count').textContent = !rest.length ? ''
     : (shown.length < rest.length ? shown.length + ' of ' + rest.length : String(rest.length));
-  $('#bal-total').textContent = usd(total);
+  // The list may fill in as tokens are found - that reads as progress. The
+  // total may not: a number that drops to a fifth and climbs back looks like
+  // money went missing, and after a swap that is a frightening thing to show.
+  const totalEl = $('#bal-total');
+  if (!SWEEPING) {
+    TOTAL_SHOWN = total;
+    totalEl.textContent = usd(total);
+    totalEl.classList.remove('stale');
+  } else if (TOTAL_SHOWN !== null) {
+    // a refresh keeps the last complete figure, dimmed, rather than guessing
+    totalEl.textContent = usd(TOTAL_SHOWN);
+    totalEl.classList.add('stale');
+  }
+  // on a cold start there is nothing honest to put here yet, so the placeholder
+  // stays until the sweep finishes
   $('#home-note').textContent = hint || HOME_NOTE;
 }
 
@@ -159,6 +177,7 @@ function renderTokens(list, found, px, hint){
 
 async function loadBalances(addr){
   const list = $('#tok-list');
+  SWEEPING = true;
   try {
     const [bank, px] = await Promise.all([
       getJSON(LCD + '/cosmos/bank/v1beta1/balances/' + addr),
@@ -243,12 +262,17 @@ async function loadBalances(addr){
       .concat(hits.map(h => h.c));
     cacheSet('held:' + addr, held.filter((c, i, a) => c && a.indexOf(c) === i));
     await priceRows(list, found, px);
+    // everything that could be found has been found and priced; from here the
+    // total is the whole wallet
+    SWEEPING = false;
     renderTokens(list, found, px, marketComplete() ? '' :
       'Could not read every exchange just now, so some prices may be based on ' +
       'the wrong pool. Reopening usually fixes it.');
   } catch (e) {
+    SWEEPING = false;
     list.innerHTML = '<li class="empty">Could not reach the chain: ' + (e.message || e) + '</li>';
-    $('#bal-total').textContent = '\u2014';
+    // a failed read is not a zero balance, and must not be drawn as one
+    if (TOTAL_SHOWN === null) $('#bal-total').textContent = '\u2014';
   }
 }
 
