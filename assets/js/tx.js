@@ -1,7 +1,7 @@
-import { LCD, amt, fmt, getJSON } from './chain.js?v=186f08d5';
-import { $, buzz, go, tap } from './shell.js?v=186f08d5';
-import { S } from './state.js?v=186f08d5';
-import { refreshBalances } from './tokens.js?v=186f08d5';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=07b1d070';
+import { $, buzz, go, tap } from './shell.js?v=07b1d070';
+import { S } from './state.js?v=07b1d070';
+import { refreshBalances } from './tokens.js?v=07b1d070';
 
 /* ---------------- protobuf ----------------
    Written out by hand because cosmjs is several hundred kilobytes and this is
@@ -100,6 +100,24 @@ async function keyOf(mnemonic){
   return { node: node, pub: node.publicKey, sha256: m.sha256 };
 }
 
+/* ---------------- amounts ----------------
+   Base units from a typed decimal, by moving the point in the string rather
+   than multiplying. 189286693.38 * 1e6 is not an integer in binary floating
+   point, and every digit of error lands in somebody's transfer. Digits past
+   the token's precision are dropped, not rounded: a wallet should never send
+   more than what was typed.
+*/
+function toRaw(human, dec){
+  const s = String(human == null ? '' : human).trim().replace(',', '.');
+  if (s === '' || s === '.' || !/^\d*\.?\d*$/.test(s))
+    throw new Error('that is not an amount');
+  const cut = s.split('.');
+  const whole = cut[0] || '0';
+  const frac = (cut[1] || '').slice(0, dec);
+  const out = (whole + frac + '0'.repeat(dec - frac.length)).replace(/^0+(?=\d)/, '');
+  return out === '' ? '0' : out;
+}
+
 /* ---------------- building ---------------- */
 function nativeSendTx(from, to, denom, raw, memo, key, seq, feeCoins, gas){
   const body = txBody([any('/cosmos.bank.v1beta1.MsgSend',
@@ -129,8 +147,8 @@ async function dryRunNative(from, to, denom, human, memo, mnemonic){
   // kept for display only; a send must not fail because this endpoint moved
   const rate = await burnTaxRate().catch(() => 0);
   const [acc, key] = await Promise.all([account(from), keyOf(mnemonic)]);
-  const raw = Math.floor(Number(human) * 1e6);
-  if (!(raw > 0)) throw new Error('amount must be greater than zero');
+  const raw = toRaw(human, 6);
+  if (!(Number(raw) > 0)) throw new Error('amount must be greater than zero');
 
   // first pass with a placeholder fee, only to learn the gas
   const first = nativeSendTx(from, to, denom, raw, memo, key.pub, acc.seq,
@@ -151,7 +169,7 @@ async function dryRunNative(from, to, denom, human, memo, mnemonic){
 
   return {
     rate: rate, amount: raw, tax: tax, gas: gas, gasUsed: used, gasFee: gasFee,
-    total: raw + gasFee,
+    total: Number(raw) + gasFee,
     seq: acc.seq, num: acc.num,
     bytes: txRaw(real.body, real.auth, [sig]).length,
     signed: sig.length === 64
@@ -196,7 +214,7 @@ async function waitFor(hash, tries = 30){
 // rejected outright.
 async function sendNative(from, to, denom, human, memo, mnemonic){
   const [acc, key] = await Promise.all([account(from), keyOf(mnemonic)]);
-  const raw = Math.floor(Number(human) * 1e6);
+  const raw = toRaw(human, 6);
   const probe = nativeSendTx(from, to, denom, raw, memo, key.pub, acc.seq,
     [{ denom: 'uluna', amount: '1000000' }], 400000);
   const gas = Math.ceil((await simulateGas(probe.body, probe.auth)) * GAS_SAFETY);
@@ -335,7 +353,7 @@ if (btn) {
   if (mx) mx.addEventListener('click', fillMax);
 }
 
-export { dryRunNative, sendNative, burnTaxRate, b64 };
+export { dryRunNative, sendNative, burnTaxRate, b64, toRaw };
 
 /* ---------------- contract calls ----------------
    MsgExecuteContract in both dialects this chain has carried. The field

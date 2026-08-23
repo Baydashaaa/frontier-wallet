@@ -4,12 +4,12 @@
 // пул сам умеет ответить, сколько отдаст за конкретную сумму, с учётом
 // проскальзывания и комиссии. Считать это самому - значит показать одно
 // число, а получить другое.
-import { amt, fmt, iconHTML, paintIcons, smart } from './chain.js?v=186f08d5';
-import { $, go, tap } from './shell.js?v=186f08d5';
-import { directPairs } from './market.js?v=186f08d5';
-import { heldTokens, refreshBalances } from './tokens.js?v=186f08d5';
-import { dryRunSwap, sendSwap } from './tx.js?v=186f08d5';
-import { S } from './state.js?v=186f08d5';
+import { amt, fmt, iconHTML, paintIcons, smart } from './chain.js?v=07b1d070';
+import { $, go, tap } from './shell.js?v=07b1d070';
+import { directPairs } from './market.js?v=07b1d070';
+import { heldTokens, refreshBalances } from './tokens.js?v=07b1d070';
+import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=07b1d070';
+import { S } from './state.js?v=07b1d070';
 
 const LUNC = { sym: 'LUNC', denom: 'uluna', dec: 6, native: true };
 let FROM = LUNC, TO = null, TIMER = null, SEQ = 0;
@@ -140,7 +140,7 @@ function setPct(p){
   if (!bal) return;
   let v = bal * (p / 100);
   if (p === 100 && FROM.denom === 'uluna') v = Math.max(0, bal - LUNC_RESERVE);
-  $('#sw-amt').value = v > 0 ? v.toFixed(6) : '';
+  $('#sw-amt').value = v > 0 ? v.toFixed(decOf(FROM)) : '';
   $('#sw-range').value = String(p);
   schedule();
 }
@@ -178,7 +178,7 @@ async function quote(){
 
   out.textContent = 'quoting'; out.classList.add('dim');
   const dFrom = decOf(FROM), dTo = decOf(TO);
-  const raw = String(Math.round(v * Math.pow(10, dFrom)));
+  const raw = toRaw($('#sw-amt').value, dFrom);
 
   try {
     const pairs = await candidates(token, pair);
