@@ -439,3 +439,11 @@ textarea{resize:none;min-height:110px;line-height:1.8}
 .sw-item img,.sw-item .ic,.sw-item i{width:30px;height:30px;border-radius:50%;flex:none;display:block}
 .sw-item-s{flex:1;font-size:14px;font-weight:600;letter-spacing:.03em}
 .sw-item-v{font-family:'Rajdhani',sans-serif;font-size:13px;color:var(--muted)}
+
+/* ══ patch55: кнопки обмена внизу экрана ══
+   Поля читаются сверху вниз, а действие ждёт там, где его ищет большой палец.
+   Пустота между ними принадлежит экрану, а не кнопке. */
+#st-swap{display:flex;flex-direction:column}
+#st-swap #sw-note{margin:0 4px 14px}
+#st-swap #sw-go{margin-top:auto}
+#st-swap .btn.quiet{margin-top:10px}
