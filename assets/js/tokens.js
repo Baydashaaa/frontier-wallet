@@ -1,6 +1,6 @@
-import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=d0167347';
-import { DEC, cacheGet, cacheGetStale, cacheSet, graph, mapLimit, marketComplete, poolPrice, txCandidates } from './market.js?v=d0167347';
-import { $, go } from './shell.js?v=d0167347';
+import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=8217ef19';
+import { DEC, cacheGet, cacheGetStale, cacheSet, graph, mapLimit, marketComplete, poolPrice, txCandidates } from './market.js?v=8217ef19';
+import { $, go } from './shell.js?v=8217ef19';
 
 async function tokenRow(c, addr, known){
   try {
@@ -285,7 +285,34 @@ async function loadStaking(addr){
   }
 }
 
+// Which address the screen is showing, so anything can ask for a fresh read
+// without carrying the address around.
+let ADDR = '', LAST_AT = 0, BUSY = false;
+
+// A balance changes when a block lands, not when a transaction was signed, so
+// the screen has to be told to look again. Two guards: never twice at once,
+// and never more often than every fifteen seconds - the chain does not move
+// faster than that, and neither should the polling.
+async function refreshBalances(force){
+  if (!ADDR || BUSY) return;
+  if (!force && Date.now() - LAST_AT < 15000) return;
+  BUSY = true;
+  try { await loadBalances(ADDR); }
+  catch (e) { /* a failed refresh is not a failed swap */ }
+  finally { BUSY = false; LAST_AT = Date.now(); }
+}
+
+// Only while the wallet is actually on screen. A mini app that keeps polling
+// after it is closed is a battery complaint waiting to happen.
+const onHome = () => {
+  const h = document.getElementById('st-home');
+  return !document.hidden && h && h.classList.contains('on');
+};
+setInterval(() => { if (onHome()) refreshBalances(false); }, 45000);
+document.addEventListener('visibilitychange', () => { if (onHome()) refreshBalances(false); });
+
 function openWallet(addr){
+  ADDR = addr;
   $('#home-addr').textContent = addr.slice(0,14) + '\u2026' + addr.slice(-6);
   go('home');
   loadBalances(addr);
@@ -295,4 +322,4 @@ function openWallet(addr){
 // The swap screen needs the same rows the list is drawn from, priced and all.
 // Handing back LAST.found beats asking the chain a second time.
 const heldTokens = () => LAST.found || [];
-export { heldTokens, luncRaw, openWallet };
+export { heldTokens, luncRaw, openWallet, refreshBalances };

@@ -4,12 +4,12 @@
 // пул сам умеет ответить, сколько отдаст за конкретную сумму, с учётом
 // проскальзывания и комиссии. Считать это самому - значит показать одно
 // число, а получить другое.
-import { amt, fmt, iconHTML, paintIcons, smart } from './chain.js?v=d0167347';
-import { $, go, tap } from './shell.js?v=d0167347';
-import { directPairs } from './market.js?v=d0167347';
-import { heldTokens } from './tokens.js?v=d0167347';
-import { dryRunSwap, sendSwap } from './tx.js?v=d0167347';
-import { S } from './state.js?v=d0167347';
+import { amt, fmt, iconHTML, paintIcons, smart } from './chain.js?v=8217ef19';
+import { $, go, tap } from './shell.js?v=8217ef19';
+import { directPairs } from './market.js?v=8217ef19';
+import { heldTokens, refreshBalances } from './tokens.js?v=8217ef19';
+import { dryRunSwap, sendSwap } from './tx.js?v=8217ef19';
+import { S } from './state.js?v=8217ef19';
 
 const LUNC = { sym: 'LUNC', denom: 'uluna', dec: 6, native: true };
 let FROM = LUNC, TO = null, TIMER = null, SEQ = 0;
@@ -321,6 +321,10 @@ $('#sw-go').addEventListener('click', async () => {
               { k: 'Status', v: 'waiting for a block' }]);
       armGo('Sent', false);
       const done = await res.wait();
+      // the node can answer with state from a block earlier than the one that
+      // included this, so ask twice rather than show a stale number
+      refreshBalances(true);
+      setTimeout(function () { refreshBalances(true); }, 6000);
       detail([{ k: 'Swap', v: done ? 'confirmed' : 'not seen yet, check Activity',
                 tone: done ? '' : 'warn' },
               { k: 'Hash', v: res.hash.slice(0, 10) + '\u2026' }]);
