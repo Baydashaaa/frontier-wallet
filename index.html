@@ -8,10 +8,78 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@400;500;600;700&family=Rajdhani:wght@600;700&display=swap" rel="stylesheet">
+<style>html,body{background:#0B0F1A;margin:0}</style>
+<style>
+/* заставка: инлайн, потому что она должна пережить отсутствие app.css */
+#fw-splash{position:fixed;inset:0;z-index:9999;background:#0B0F1A;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  transition:opacity .42s ease}
+#fw-splash.gone{opacity:0;pointer-events:none}
+#fw-splash .halo{position:absolute;top:50%;left:50%;width:460px;height:460px;
+  transform:translate(-50%,-58%);border-radius:50%;pointer-events:none;
+  background:radial-gradient(circle,rgba(123,92,255,.30) 0%,rgba(123,92,255,.10) 45%,rgba(123,92,255,0) 70%)}
+#fw-splash .mark{position:relative;width:100%;max-width:250px;aspect-ratio:1200/431;
+  margin:0 auto;animation:fw-rise .7s cubic-bezier(.2,.9,.3,1) both}
+#fw-splash .mark img{position:absolute;display:block}
+#fw-splash .mark .seam{animation:fw-seam 1.4s ease-in-out .35s infinite}
+#fw-splash .tag{position:relative;margin-top:18px;font-family:'Exo 2',system-ui,sans-serif;
+  font-size:10.5px;letter-spacing:.34em;text-transform:uppercase;color:#6B82A8;
+  animation:fw-rise .7s ease-out .25s both}
+#fw-splash .bar{position:relative;margin-top:26px;width:104px;height:2px;border-radius:2px;
+  background:rgba(107,130,168,.22);overflow:hidden}
+#fw-splash .bar i{display:block;height:100%;width:40%;border-radius:2px;
+  background:linear-gradient(90deg,transparent,#7B5CFF,#00D4FF,transparent);
+  animation:fw-sweep 1.15s ease-in-out infinite}
+@keyframes fw-rise{from{opacity:0;transform:translateY(10px) scale(.97)}to{opacity:1;transform:none}}
+@keyframes fw-seam{0%,100%{filter:brightness(1)}50%{filter:brightness(1.9)}}
+@keyframes fw-sweep{0%{transform:translateX(-140%)}100%{transform:translateX(360%)}}
+@media (prefers-reduced-motion:reduce){
+  #fw-splash .mark,#fw-splash .tag{animation:none}
+  #fw-splash .mark .seam,#fw-splash .bar i{animation:none}
+  #fw-splash .bar i{width:100%}
+}
+</style>
 <link rel="stylesheet" href="assets/css/app.css?v=85fa5acd">
 </head>
 <body>
 <div id="rt"></div>
+<div id="fw-splash">
+  <div class="halo"></div>
+  <div class="mark">
+    <img src="assets/letters/F.png"  alt="" style="left:0.0%;top:37.82%;width:8.17%;height:23.43%">
+    <img src="assets/letters/R.png"  alt="" style="left:12.5%;top:38.05%;width:8.83%;height:23.67%">
+    <img src="assets/letters/O.png"  alt="" style="left:25.92%;top:38.05%;width:8.75%;height:23.67%">
+    <img src="assets/letters/N.png"  alt="" style="left:39.33%;top:37.82%;width:8.67%;height:23.9%">
+    <img src="assets/letters/spike.png" class="seam" alt="" style="left:50.92%;top:0.0%;width:3.42%;height:100.0%">
+    <img src="assets/letters/T.png"  alt="" style="left:56.83%;top:37.82%;width:9.0%;height:23.43%">
+    <img src="assets/letters/I.png"  alt="" style="left:70.42%;top:37.82%;width:1.92%;height:23.43%">
+    <img src="assets/letters/E.png"  alt="" style="left:78.17%;top:37.82%;width:8.58%;height:23.43%">
+    <img src="assets/letters/R2.png" alt="" style="left:91.42%;top:37.82%;width:8.58%;height:23.9%">
+  </div>
+  <div class="tag">Terra Classic Wallet</div>
+  <div class="bar"><i></i></div>
+</div>
+<script>
+// Заставка уходит, когда приложение готово, но не раньше MIN - иначе на быстром
+// соединении она успевает только моргнуть. CAP страхует от вечной заставки:
+// если модуль упал, пользователь всё равно увидит экран, а не пустоту.
+(function () {
+  var el = document.getElementById('fw-splash'), t0 = Date.now(), done = false;
+  var MIN = 700, CAP = 3000;
+  function hide() {
+    if (done) return; done = true;
+    setTimeout(function () {
+      el.classList.add('gone');
+      setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 460);
+    }, Math.max(0, MIN - (Date.now() - t0)));
+  }
+  window.addEventListener('fw:ready', hide);
+  if (document.readyState === 'complete') hide();
+  else window.addEventListener('load', hide);
+  setTimeout(hide, CAP);
+})();
+</script>
+
 <div class="orb"></div>
 
 <!-- ================= WELCOME ================= -->
