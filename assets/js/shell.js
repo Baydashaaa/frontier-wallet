@@ -17,11 +17,19 @@ const $  = s => document.querySelector(s);
 const crash = document.createElement('div');
 crash.className = 'crash';
 document.body.appendChild(crash);
+// Safari puts the location in the stack and the reason in the message, and
+// printing only one of them describes half the problem.
 function report(where, e){
-  const msg = e && e.stack ? e.stack : String(e);
-  crash.textContent = '[' + where + '] ' + msg;
+  const parts = [];
+  if (e && e.name) parts.push(e.name);
+  if (e && e.message) parts.push(e.message);
+  if (!parts.length) parts.push(String(e));
+  if (e && e.stack) parts.push(String(e.stack).split('\n').slice(0, 4).join('\n'));
+  crash.textContent = '[' + where + '] ' + parts.join('\n');
   crash.classList.add('on');
 }
+// tapping it clears it, so a stale banner cannot sit over a working screen
+crash.addEventListener('click', () => crash.classList.remove('on'));
 window.addEventListener('error', ev => report('error', ev.error || ev.message));
 window.addEventListener('unhandledrejection', ev => report('promise', ev.reason));
 const $$ = s => Array.from(document.querySelectorAll(s));
