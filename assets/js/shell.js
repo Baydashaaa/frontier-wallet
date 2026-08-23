@@ -86,13 +86,25 @@ function go(name){
 }
 $$('[data-go]').forEach(el => el.addEventListener('click', () => go(el.dataset.go)));
 
-async function libs(){
-  if (bip39) return;
-  const m = await import('../../vendor/crypto.js');
-  bip39 = { ...m.bip39, wordlist: m.wordlist };
-  bip32 = m.bip32; base = m.base;
-  ripe = { ripemd160: m.ripemd160 };
-  sha  = { sha256: m.sha256 };
+// One promise, not a flag. Two callers arriving together used to start two
+// imports, and the second could run on a half-filled set of bindings - which
+// is the kind of failure that only shows up on somebody else's connection.
+let LIBS_ONCE = null;
+function libs(){
+  if (LIBS_ONCE) return LIBS_ONCE;
+  LIBS_ONCE = import('../../vendor/crypto.js').then(function (m) {
+    bip39 = { ...m.bip39, wordlist: m.wordlist };
+    bip32 = m.bip32; base = m.base;
+    ripe = { ripemd160: m.ripemd160 };
+    sha  = { sha256: m.sha256 };
+  }).catch(function (e) {
+    LIBS_ONCE = null;          // a failed load must not poison every later try
+    throw e;
+  });
+  return LIBS_ONCE;
 }
 
-export { $, $$, bip39, buzz, dropKeyboard, go, libs, report, tap, tg };
+// bip32, base, ripe and sha are filled in by libs() and read by crypto.js.
+// Live bindings, so an importer sees the value libs() assigned, not the
+// undefined it started as.
+export { $, $$, base, bip32, bip39, buzz, dropKeyboard, go, libs, report, ripe, sha, tap, tg };
