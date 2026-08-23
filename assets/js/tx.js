@@ -1,6 +1,6 @@
-import { LCD, amt, fmt, getJSON } from './chain.js?v=e0dbb982';
-import { $, buzz, go, tap } from './shell.js?v=e0dbb982';
-import { S } from './state.js?v=e0dbb982';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=9d0e37be';
+import { $, buzz, go, tap } from './shell.js?v=9d0e37be';
+import { S } from './state.js?v=9d0e37be';
 
 /* ---------------- protobuf ----------------
    Written out by hand because cosmjs is several hundred kilobytes and this is
@@ -157,7 +157,59 @@ async function dryRunNative(from, to, denom, human, memo, mnemonic){
   };
 }
 
+// The node answers sync: accepted into the mempool, or refused with a reason.
+// Acceptance is not inclusion, so the hash is polled afterwards.
+async function broadcast(raw){
+  const r = await fetch(LCD + '/cosmos/tx/v1beta1/txs', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tx_bytes: b64(raw), mode: 'BROADCAST_MODE_SYNC' })
+  });
+  const d = await r.json();
+  const res = d.tx_response || {};
+  if (!r.ok) throw new Error(d.message || ('broadcast -> ' + r.status));
+  if (res.code) throw new Error('rejected (code ' + res.code + '): ' + (res.raw_log || ''));
+  return res.txhash;
+}
+
+async function waitFor(hash, tries = 30){
+  for (let i = 0; i < tries; i++) {
+    await new Promise(z => setTimeout(z, 2000));
+    try {
+      const d = await getJSON(LCD + '/cosmos/tx/v1beta1/txs/' + hash, 8000, 1);
+      const res = d.tx_response || {};
+      if (res.height && res.height !== '0') {
+        if (res.code) throw new Error('failed on chain (code ' + res.code + '): ' + (res.raw_log || ''));
+        return res;
+      }
+    } catch (e) {
+      // not indexed yet is the normal case for the first few polls
+      if (String(e.message || e).indexOf('failed on chain') === 0) throw e;
+    }
+  }
+  return null;
+}
+
+// Rebuilt from scratch rather than reusing the reviewed bytes: the sequence
+// moves whenever anything else touches this account, and a stale one is
+// rejected outright.
+async function sendNative(from, to, denom, human, memo, mnemonic){
+  const [acc, key] = await Promise.all([account(from), keyOf(mnemonic)]);
+  const raw = Math.floor(Number(human) * 1e6);
+  const probe = nativeSendTx(from, to, denom, raw, memo, key.pub, acc.seq,
+    [{ denom: 'uluna', amount: '1000000' }], 400000);
+  const gas = Math.ceil((await simulateGas(probe.body, probe.auth)) * GAS_SAFETY);
+  const gasFee = Math.ceil(gas * GAS_PRICE);
+  const real = nativeSendTx(from, to, denom, raw, memo, key.pub, acc.seq,
+    [{ denom: 'uluna', amount: String(gasFee) }], gas);
+  const sig = key.node.sign(key.sha256(signDoc(real.body, real.auth, CHAIN, acc.num)));
+  return broadcast(txRaw(real.body, real.auth, [sig]));
+}
+
 /* ---------------- the screen ---------------- */
+let LAST_GAS = 0;      // gas the most recent review measured
+let ARMED = null;      // the reviewed transfer, waiting for a second press
+
 const luncOf = () => {
   const el = $('#send-avail');
   return Number(el && el.dataset.raw || 0);
@@ -201,9 +253,14 @@ async function review(){
       line('Recipient gets', fmt(amt(d.amount, 6)) + ' LUNC', true) +
       (over ? '<div class="sbad">More than this address holds - ' +
               fmt(amt(avail, 6)) + ' LUNC available.</div>' : '') +
-      '<div class="tiny" style="margin-top:12px">Signed and ready at ' + d.bytes +
-      ' bytes, sequence ' + d.seq + '. Nothing was sent - broadcasting is the next patch. ' +
-      'Compare these numbers with Station on the same transfer before we turn it on.</div>';
+      '<div class="tiny" style="margin-top:12px">Signed at ' + d.bytes +
+      ' bytes, sequence ' + d.seq + '. Nothing has been sent yet.</div>' +
+      (over ? '' : '<button class="btn solid" id="send-go" style="margin-top:14px">Send ' +
+        fmt(amt(d.amount, 6)) + ' LUNC</button>');
+    LAST_GAS = d.gas;
+    ARMED = null;
+    const b = $('#send-go');
+    if (b) b.addEventListener('click', () => confirmSend(b, to, human, memo, from));
     buzz('success');
   } catch (e) {
     out.innerHTML = '<div class="sbad">' + (e.message || e) + '</div>';
@@ -213,9 +270,49 @@ async function review(){
 // Nothing proportional is left in the fee, so max is a subtraction. The gas a
 // send needs barely moves with the amount, so a fixed allowance is honest
 // here, and the review recomputes the real figure anyway.
+// First press arms, second sends. Deliberate rather than decorative: one
+// stray tap on a phone should not move money.
+async function confirmSend(btn, to, human, memo, from){
+  if (ARMED !== human + '|' + to) {
+    ARMED = human + '|' + to;
+    btn.textContent = 'Press again to send - this cannot be undone';
+    btn.classList.add('danger');
+    setTimeout(() => {
+      if (ARMED === human + '|' + to) {
+        ARMED = null;
+        btn.textContent = 'Send ' + human + ' LUNC';
+        btn.classList.remove('danger');
+      }
+    }, 8000);
+    return;
+  }
+  ARMED = null;
+  btn.disabled = true;
+  btn.textContent = 'Signing and sending...';
+  const out = $('#send-out');
+  try {
+    const hash = await sendNative(from, to, 'uluna', human, memo, S.MNEMONIC);
+    out.innerHTML = '<div class="sline strong"><span>Accepted by the node</span><b>' +
+      hash.slice(0, 10) + '\u2026' + hash.slice(-6) + '</b></div>' +
+      '<div class="tiny" style="margin-top:10px">Waiting for the block...</div>';
+    buzz('success');
+    const res = await waitFor(hash);
+    out.innerHTML = '<div class="sline strong"><span>' +
+      (res ? 'Included in block ' + res.height : 'Sent, not seen in a block yet') +
+      '</span><b>' + hash.slice(0, 10) + '\u2026' + hash.slice(-6) + '</b></div>' +
+      '<div class="tiny" style="margin-top:10px">' + hash + '</div>';
+    if (S.SAVED && S.SAVED.addr) setTimeout(() => openWallet(S.SAVED.addr), 1200);
+  } catch (e) {
+    out.innerHTML = '<div class="sbad">' + (e.message || e) + '</div>';
+    buzz('error');
+  }
+}
+
 function fillMax(){
   const avail = luncOf();
-  const gasFee = Math.ceil(330000 * GAS_PRICE);
+  // what the last review actually needed, or a deliberately high guess. Too
+  // little here makes an unsendable transaction; too much costs a fraction.
+  const gasFee = Math.ceil((LAST_GAS || 345000) * GAS_PRICE);
   const raw = Math.floor(avail - gasFee);
   $('#send-amt').value = raw > 0 ? (raw / 1e6).toFixed(6) : '0';
   tap();
@@ -228,4 +325,4 @@ if (btn) {
   if (mx) mx.addEventListener('click', fillMax);
 }
 
-export { dryRunNative, burnTaxRate, b64 };
+export { dryRunNative, sendNative, burnTaxRate, b64 };

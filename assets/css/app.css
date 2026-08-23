@@ -297,3 +297,7 @@ textarea{resize:none;min-height:110px;line-height:1.8}
 .crash.on{display:block}
 #rt{display:none}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* the armed state of the send button */
+.btn.solid.danger{background:linear-gradient(180deg,#E8564A,#C93A2E);
+  box-shadow:0 8px 24px rgba(232,86,74,.28)}
