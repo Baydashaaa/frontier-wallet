@@ -1,6 +1,6 @@
-import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=bafc33a2';
-import { DEC, cacheGet, cacheGetStale, cacheSet, graph, mapLimit, marketComplete, poolPrice, txCandidates } from './market.js?v=bafc33a2';
-import { $, go } from './shell.js?v=bafc33a2';
+import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=186f08d5';
+import { DEC, cacheGet, cacheGetStale, cacheSet, graph, mapLimit, marketComplete, poolPrice, txCandidates } from './market.js?v=186f08d5';
+import { $, go } from './shell.js?v=186f08d5';
 
 async function tokenRow(c, addr, known){
   try {
@@ -62,6 +62,10 @@ let LAST = { found: [], px: {}, hint: '' };
 // which the total is real but incomplete. TOTAL_SHOWN is the last one that was
 // not.
 let SWEEPING = false, TOTAL_SHOWN = null;
+// What each token was worth the last time a sweep finished. A price that
+// blinks out to "no price" on every refresh reads as the token having lost its
+// market, which is a far bigger claim than "not asked yet".
+const PRICE_SEEN = {};
 
 // anything that rounds to $0.00 on screen counts as dust
 const DUST = 0.005;
@@ -112,6 +116,21 @@ function renderTokens(list, found, px, hint){
     // Everything else that had to pass through a link this thin is a guess.
     const shaky = !!(t.pool && !t.pool.bond && t.pool.depth < THIN_LUNC);
     return { t: t, fiat: fiat, sub: sub, shaky: shaky };
+  });
+
+  rows.forEach(function (r) {
+    const k = r.t.sym;
+    if (r.fiat !== null) {
+      // only a finished sweep is allowed to define what a token is worth
+      if (!SWEEPING) PRICE_SEEN[k] = { fiat: r.fiat, sub: r.sub };
+    } else if (SWEEPING && PRICE_SEEN[k]) {
+      r.fiat = PRICE_SEEN[k].fiat;
+      r.sub = PRICE_SEEN[k].sub;
+      r.shaky = true;             // last known, not current - and it says so
+    } else if (!SWEEPING) {
+      // the sweep finished and found no price: the old one is now a fiction
+      delete PRICE_SEEN[k];
+    }
   });
 
   // by value, not by count - a hundred dollars belongs above eight cents no

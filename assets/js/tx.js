@@ -1,6 +1,7 @@
-import { LCD, amt, fmt, getJSON } from './chain.js?v=bafc33a2';
-import { $, buzz, go, tap } from './shell.js?v=bafc33a2';
-import { S } from './state.js?v=bafc33a2';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=186f08d5';
+import { $, buzz, go, tap } from './shell.js?v=186f08d5';
+import { S } from './state.js?v=186f08d5';
+import { refreshBalances } from './tokens.js?v=186f08d5';
 
 /* ---------------- protobuf ----------------
    Written out by hand because cosmjs is several hundred kilobytes and this is
@@ -304,11 +305,13 @@ async function confirmSend(btn, to, human, memo, from){
     // Reloading the wallet is a courtesy, not part of the transfer. If it
     // throws, the transfer is still done and the banner must not suggest
     // otherwise - the next open reloads everything anyway.
-    if (S.SAVED && S.SAVED.addr) {
-      setTimeout(() => {
-        try { openWallet(S.SAVED.addr); } catch (e) { /* the send already succeeded */ }
-      }, 1200);
-    }
+    // Refreshed in place rather than reopened. openWallet ends with go('home'),
+    // which took the reader off the result mid-sentence - the block height and
+    // the hash are the two things worth reading after a transfer.
+    // Twice, because a node can answer with state from a block older than the
+    // one that included this.
+    refreshBalances(true);
+    setTimeout(function () { refreshBalances(true); }, 6000);
   } catch (e) {
     out.innerHTML = '<div class="sbad">' + (e.message || e) + '</div>';
     buzz('error');

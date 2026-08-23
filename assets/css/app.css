@@ -443,7 +443,9 @@ textarea{resize:none;min-height:110px;line-height:1.8}
 /* ══ patch55: кнопки обмена внизу экрана ══
    Поля читаются сверху вниз, а действие ждёт там, где его ищет большой палец.
    Пустота между ними принадлежит экрану, а не кнопке. */
-#st-swap{display:flex;flex-direction:column}
+/* An id beats .step{display:none}, so this has to say when, not just how -
+   otherwise the swap screen is drawn on top of every other tab. */
+#st-swap.on{display:flex;flex-direction:column}
 #st-swap #sw-note{margin:0 4px 14px}
 #st-swap #sw-go{margin-top:auto}
 #st-swap .btn.quiet{margin-top:10px}
