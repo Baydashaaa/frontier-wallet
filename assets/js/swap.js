@@ -4,11 +4,12 @@
 // пул сам умеет ответить, сколько отдаст за конкретную сумму, с учётом
 // проскальзывания и комиссии. Считать это самому - значит показать одно
 // число, а получить другое.
-import { amt, fmt, iconHTML, paintIcons, smart } from './chain.js?v=59f52948';
-import { $, go, tap } from './shell.js?v=59f52948';
-import { heldTokens } from './tokens.js?v=59f52948';
-import { dryRunSwap, sendSwap } from './tx.js?v=59f52948';
-import { S } from './state.js?v=59f52948';
+import { amt, fmt, iconHTML, paintIcons, smart } from './chain.js?v=3d29f62b';
+import { $, go, tap } from './shell.js?v=3d29f62b';
+import { directPairs } from './market.js?v=3d29f62b';
+import { heldTokens } from './tokens.js?v=3d29f62b';
+import { dryRunSwap, sendSwap } from './tx.js?v=3d29f62b';
+import { S } from './state.js?v=3d29f62b';
 
 const LUNC = { sym: 'LUNC', denom: 'uluna', dec: 6, native: true };
 let FROM = LUNC, TO = null, TIMER = null, SEQ = 0;
@@ -38,6 +39,17 @@ function pairOf(t){
 }
 const swappable = t =>
   !!t && !!t.contract && !!t.pool && !t.pool.bond && !!pairOf(t) && t.pool.hops === 1;
+
+// The same pair is listed by more than one factory, with different depth and
+// different fees. Which one is best is a question about this amount, not about
+// the pools in general, so every candidate is asked and the answers compared.
+async function candidates(token, fallback){
+  try {
+    const list = await directPairs(token.contract);
+    if (Array.isArray(list) && list.length) return list;
+  } catch (e) {}
+  return [fallback];
+}
 
 function decOf(t){
   const d = Number(t && t.dec);
@@ -127,7 +139,7 @@ async function quote(){
     detail([{ k: 'Route', v: 'token to token needs two swaps', tone: 'warn' }]);
     return;
   }
-  const pair = pairOf(token);
+  let pair = pairOf(token);
   if (!pair) { out.textContent = '-'; out.classList.add('dim');
     detail([{ k: 'Route', v: 'no direct pool', tone: 'bad' }]); return; }
   if (!isFinite(v) || v <= 0) { out.textContent = '-'; out.classList.add('dim'); detail([]); return; }
@@ -137,9 +149,22 @@ async function quote(){
   const raw = String(Math.round(v * Math.pow(10, dFrom)));
 
   try {
-    const r = await smart(pair, { simulation: { offer_asset: { info: assetInfo(FROM), amount: raw } } });
+    const pairs = await candidates(token, pair);
+    const quotes = (await Promise.all(pairs.map(function (p) {
+      return smart(p, { simulation: { offer_asset: { info: assetInfo(FROM), amount: raw } } })
+        .then(function (x) { return { pair: p, d: (x && x.data) || {} }; })
+        // a pool that will not answer is not an error, it is one fewer option
+        .catch(function () { return null; });
+    }))).filter(function (q) { return q && Number(q.d.return_amount) > 0; });
     if (my !== SEQ) return;                       // ответ на устаревший ввод
-    const d = (r && r.data) || {};
+    if (!quotes.length) throw new Error('no pool would quote this amount');
+    quotes.sort(function (a, b) { return Number(b.d.return_amount) - Number(a.d.return_amount); });
+    pair = quotes[0].pair;
+    const d = quotes[0].d;
+    // what the second best would have given, which is the whole point of asking
+    const edge = quotes.length > 1
+      ? (Number(d.return_amount) / Number(quotes[1].d.return_amount) - 1) * 100
+      : 0;
     const got = amt(d.return_amount, dTo);
     const spread = Number(d.spread_amount) / Math.pow(10, dTo);
     const fee = Number(d.commission_amount) / Math.pow(10, dTo);
@@ -157,7 +182,9 @@ async function quote(){
         tone: pct >= 5 ? 'bad' : pct >= 1 ? 'warn' : '' },
       { k: 'Pool fee', v: fmt(fee) + ' ' + TO.sym },
       { k: 'Pool depth', v: fmt(token.pool.depth) + ' LUNC',
-        tone: token.pool.depth < 5e6 ? 'warn' : '' }
+        tone: token.pool.depth < 5e6 ? 'warn' : '' },
+      { k: 'Pools asked', v: quotes.length + ' of ' + pairs.length +
+        (edge > 0.01 ? ', best by ' + edge.toFixed(2) + '%' : '') }
     ]);
   } catch (e) {
     if (my !== SEQ) return;
