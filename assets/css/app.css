@@ -447,3 +447,13 @@ textarea{resize:none;min-height:110px;line-height:1.8}
 #st-swap #sw-note{margin:0 4px 14px}
 #st-swap #sw-go{margin-top:auto}
 #st-swap .btn.quiet{margin-top:10px}
+
+/* ══ patch58: зоны проскальзывания ══
+   Дорожка бегунка красится по пулу, а не по балансу: докуда сделка дёшева,
+   докуда терпима, и где начинается потеря. Это видно пальцем, до всяких цифр. */
+.sw-range::-webkit-slider-runnable-track{
+  background:var(--sw-zones,linear-gradient(90deg,#7B5CFF,#00D4FF))}
+.sw-range::-moz-range-track{
+  background:var(--sw-zones,linear-gradient(90deg,#7B5CFF,#00D4FF))}
+.sw-hint{margin-top:9px;font-size:11px;line-height:1.4;color:var(--muted)}
+.sw-hint b{font-family:'Rajdhani',sans-serif;font-weight:600;color:#00FFB0}

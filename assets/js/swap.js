@@ -4,12 +4,12 @@
 // пул сам умеет ответить, сколько отдаст за конкретную сумму, с учётом
 // проскальзывания и комиссии. Считать это самому - значит показать одно
 // число, а получить другое.
-import { amt, fmt, iconHTML, paintIcons, smart } from './chain.js?v=3d29f62b';
-import { $, go, tap } from './shell.js?v=3d29f62b';
-import { directPairs } from './market.js?v=3d29f62b';
-import { heldTokens } from './tokens.js?v=3d29f62b';
-import { dryRunSwap, sendSwap } from './tx.js?v=3d29f62b';
-import { S } from './state.js?v=3d29f62b';
+import { amt, fmt, iconHTML, paintIcons, smart } from './chain.js?v=5b9aae53';
+import { $, go, tap } from './shell.js?v=5b9aae53';
+import { directPairs } from './market.js?v=5b9aae53';
+import { heldTokens } from './tokens.js?v=5b9aae53';
+import { dryRunSwap, sendSwap } from './tx.js?v=5b9aae53';
+import { S } from './state.js?v=5b9aae53';
 
 const LUNC = { sym: 'LUNC', denom: 'uluna', dec: 6, native: true };
 let FROM = LUNC, TO = null, TIMER = null, SEQ = 0;
@@ -76,6 +76,37 @@ function face(el, t){
   paintIcons(el);
 }
 
+// On a constant product pool the cost of a trade is roughly its size against
+// the reserve it is pushing into, so a trade worth one percent of that reserve
+// costs about one percent. That number can be named before anything is typed,
+// which is the only moment a warning is still useful.
+function comfortOf(){
+  const token = FROM.sym === 'LUNC' ? TO : FROM;
+  if (!token || !token.pool || !token.pool.depth) return 0;
+  const lunc = token.pool.depth;
+  const reserve = FROM.denom ? lunc : lunc / (token.pool.inLunc || 1);
+  return reserve > 0 ? reserve * 0.01 : 0;
+}
+
+function paintZones(){
+  const el = $('#sw-range'), hint = $('#sw-hint');
+  const bal = balOf(FROM), c = comfortOf();
+  if (!bal || !c) {
+    el.style.removeProperty('--sw-zones');
+    hint.textContent = '';
+    return;
+  }
+  const s = Math.min(100, (c / bal) * 100);
+  const m = Math.min(100, s * 5);
+  el.style.setProperty('--sw-zones',
+    'linear-gradient(90deg,#00FFB0 0 ' + s + '%,#E8C840 ' + s + '% ' + m + '%,' +
+    '#FF6B8A ' + m + '% 100%)');
+  hint.innerHTML = c >= bal
+    ? 'This pool is deep enough for anything you hold.'
+    : 'Around <b>' + fmt(c) + ' ' + FROM.sym + '</b> is where this pool starts ' +
+      'costing you more than 1%.';
+}
+
 function fillPickers(){
   const rows = heldTokens().filter(swappable);
   if (!TO && rows.length) TO = rows[0];
@@ -84,6 +115,7 @@ function fillPickers(){
   $('#sw-net').textContent = rows.length ? rows.length + ' pairs' : 'no direct pairs held';
   const bal = balOf(FROM);
   $('#sw-avail').textContent = bal ? fmt(bal) + ' available' : '';
+  paintZones();
 }
 
 function openSheet(side){
@@ -173,12 +205,17 @@ async function quote(){
     out.textContent = fmt(got);
     out.classList.remove('dim');
     QUOTE = { pair: pair, offerRaw: raw, returnRaw: String(d.return_amount),
-              got: got, dTo: dTo };
-    armGo(S.MNEMONIC ? 'Check what this would cost' : 'Watch only, nothing can be signed',
-          !!S.MNEMONIC);
+              got: got, dTo: dTo, pct: pct };
+    // an expensive trade should not be one tap away from an ordinary one
+    armGo(!S.MNEMONIC ? 'Watch only, nothing can be signed'
+          : pct >= 5 ? 'This costs ' + pct.toFixed(1) + '%, check it'
+          : 'Check what this would cost', !!S.MNEMONIC);
     detail([
       { k: 'Rate', v: '1 ' + FROM.sym + ' = ' + fmt(got / v) + ' ' + TO.sym },
       { k: 'Price impact', v: pct.toFixed(2) + '%',
+        tone: pct >= 5 ? 'bad' : pct >= 1 ? 'warn' : '' },
+      // a percentage is an argument; the tokens it costs is a fact
+      { k: 'Slippage costs you', v: fmt(spread) + ' ' + TO.sym,
         tone: pct >= 5 ? 'bad' : pct >= 1 ? 'warn' : '' },
       { k: 'Pool fee', v: fmt(fee) + ' ' + TO.sym },
       { k: 'Pool depth', v: fmt(token.pool.depth) + ' LUNC',
@@ -273,7 +310,9 @@ $('#sw-go').addEventListener('click', async () => {
         { k: 'Network fee', v: fmt(est.gasFee / 1e6) + ' LUNC' },
         { k: 'Gas', v: String(est.gas) }
       ]);
-      armGo('Swap ' + FROM.sym + ' for ' + TO.sym, true);
+      armGo(QUOTE && PLAN && QUOTE.pct >= 5
+        ? 'Swap anyway, losing ' + QUOTE.pct.toFixed(1) + '%'
+        : 'Swap ' + FROM.sym + ' for ' + TO.sym, true);
     } else {
       b.textContent = 'Signing';
       const env = PLAN.env;
