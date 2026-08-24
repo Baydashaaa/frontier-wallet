@@ -1,4 +1,4 @@
-import { EXTRA_PAIRS, FACTORIES, LCD, amt, getJSON, smart } from './chain.js?v=2cc8ed19';
+import { EXTRA_PAIRS, FACTORIES, LCD, amt, getJSON, smart } from './chain.js?v=77336b0c';
 
 /* ---------------- discovery and pricing ----------------
    The chain has no "which CW20 does this address hold" endpoint. Balances live
@@ -322,6 +322,10 @@ async function directPairs(token){
   const hit = cacheGet('pair:' + token);
   if (hit) return hit;
   const want = [];
+  // A factory that fell over is not a factory that answered "no pair". Without
+  // this the two look identical, and one 500 hides a token's price for as long
+  // as the cache lives.
+  let asked = 0;
   await Promise.all(FACTORIES.map(async f => {
     const q = f.k === 'code'
       ? { pair: { asset1: { cw20: token }, asset2: { native: 'uluna' } } }
@@ -334,6 +338,7 @@ async function directPairs(token){
     // 400, and the retry logic reads that as "later" - so a question with one
     // permanent answer was being asked three times.
     try { r = await smart(f.a, q, 1); } catch (e) { return; }
+    asked += 1;
     const d = (r && r.data) || {};
     const addr = d.contract_addr || d.contract || d.pair;
     if (addr) want.push(addr);
@@ -342,7 +347,9 @@ async function directPairs(token){
   // every token without a pool asked every factory again on every open, which
   // is where most of the 500s came from. A pool created in the meantime shows
   // up when the cache expires.
-  cacheSet('pair:' + token, want);
+  // "No factory holds this pair" is worth remembering - but only when every
+  // factory was actually heard from. A partial round says nothing.
+  if (want.length || asked === FACTORIES.length) cacheSet('pair:' + token, want);
   return want;
 }
 
