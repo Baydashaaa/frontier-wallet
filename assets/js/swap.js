@@ -4,12 +4,12 @@
 // пул сам умеет ответить, сколько отдаст за конкретную сумму, с учётом
 // проскальзывания и комиссии. Считать это самому - значит показать одно
 // число, а получить другое.
-import { amt, fmt, iconHTML, paintIcons, smart } from './chain.js?v=77336b0c';
-import { $, go, tap } from './shell.js?v=77336b0c';
-import { directPairs } from './market.js?v=77336b0c';
-import { heldTokens, refreshBalances } from './tokens.js?v=77336b0c';
-import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=77336b0c';
-import { S } from './state.js?v=77336b0c';
+import { amt, fmt, iconHTML, paintIcons, smart } from './chain.js?v=73d3e550';
+import { $, go, tap } from './shell.js?v=73d3e550';
+import { directPairs } from './market.js?v=73d3e550';
+import { heldTokens, refreshBalances } from './tokens.js?v=73d3e550';
+import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=73d3e550';
+import { S } from './state.js?v=73d3e550';
 
 const LUNC = { sym: 'LUNC', denom: 'uluna', dec: 6, native: true };
 let FROM = LUNC, TO = null, TIMER = null, SEQ = 0;
@@ -193,10 +193,16 @@ async function quote(){
     quotes.sort(function (a, b) { return Number(b.d.return_amount) - Number(a.d.return_amount); });
     pair = quotes[0].pair;
     const d = quotes[0].d;
-    // what the second best would have given, which is the whole point of asking
-    const edge = quotes.length > 1
-      ? (Number(d.return_amount) / Number(quotes[1].d.return_amount) - 1) * 100
+    // What the second best would have given - the whole point of asking more
+    // than one pool. But only pools that could actually have taken the trade
+    // count as second best: a pool holding a few hundred LUNC returns almost
+    // nothing, and the resulting "better by 327807%" reads as a broken screen
+    // rather than as the dust it describes.
+    const best = Number(d.return_amount);
+    const rival = quotes.length > 1 && Number(quotes[1].d.return_amount) > best / 2
+      ? Number(quotes[1].d.return_amount)
       : 0;
+    const edge = rival ? (best / rival - 1) * 100 : null;
     const got = amt(d.return_amount, dTo);
     const spread = Number(d.spread_amount) / Math.pow(10, dTo);
     const fee = Number(d.commission_amount) / Math.pow(10, dTo);
@@ -221,7 +227,9 @@ async function quote(){
       { k: 'Pool depth', v: fmt(token.pool.depth) + ' LUNC',
         tone: token.pool.depth < 5e6 ? 'warn' : '' },
       { k: 'Pools asked', v: quotes.length + ' of ' + pairs.length +
-        (edge > 0.01 ? ', best by ' + edge.toFixed(2) + '%' : '') }
+        (edge === null
+          ? (quotes.length > 1 ? ', the rest too thin to matter' : '')
+          : edge > 0.01 ? ', best by ' + edge.toFixed(2) + '%' : '') }
     ]);
   } catch (e) {
     if (my !== SEQ) return;

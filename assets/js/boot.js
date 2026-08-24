@@ -1,10 +1,10 @@
-import { amt, fmt } from './chain.js?v=77336b0c';
-import { finish } from './crypto.js?v=77336b0c';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=77336b0c';
-import { $, bip39, buzz, dropKeyboard, go, libs, report, tap } from './shell.js?v=77336b0c';
-import { S } from './state.js?v=77336b0c';
-import { Store, decryptSeed, saveWallet, short, showStore } from './storage.js?v=77336b0c';
-import { luncRaw, openWallet } from './tokens.js?v=77336b0c';
+import { amt, fmt } from './chain.js?v=73d3e550';
+import { finish } from './crypto.js?v=73d3e550';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=73d3e550';
+import { $, bip39, buzz, dropKeyboard, go, libs, report, tap } from './shell.js?v=73d3e550';
+import { S } from './state.js?v=73d3e550';
+import { Store, decryptSeed, saveWallet, short, showStore } from './storage.js?v=73d3e550';
+import { luncRaw, openWallet } from './tokens.js?v=73d3e550';
 
 /* ---------------- unlock ---------------- */
 let tries = 0;
