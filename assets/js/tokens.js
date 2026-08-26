@@ -1,6 +1,6 @@
-import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=66f765b7';
-import { DEC, cacheGet, cacheGetStale, cacheSet, graph, mapLimit, marketComplete, poolPrice, txCandidates } from './market.js?v=66f765b7';
-import { $, go } from './shell.js?v=66f765b7';
+import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=05dcb65c';
+import { DEC, cacheGet, cacheGetStale, cacheSet, graph, mapLimit, marketComplete, poolPrice, txCandidates } from './market.js?v=05dcb65c';
+import { $, go } from './shell.js?v=05dcb65c';
 
 // keep=true means this contract is on the address's list, so it earns a row
 // even at zero. Only an unknown contract has to prove itself with a balance.
@@ -74,9 +74,23 @@ async function priceRows(list, found, px){
   const mine = ++PRICING;
   const todo = found.filter(r => r.contract && !r.pool && !px[r.sym]);
   if (!todo.length) return;
-  const got = await mapLimit(todo, 10, r => poolPrice(r.contract).catch(() => null));
+
+  // What can be answered from a direct pool or a bonding curve, which is most
+  // of any wallet. Drawn as soon as it is in, so the screen fills instead of
+  // waiting on whichever token is slowest.
+  const quick = await mapLimit(todo, 10, r => poolPrice(r.contract, true).catch(() => null));
   if (mine !== PRICING) return;   // a newer pass has started, this one is stale
-  todo.forEach((r, i) => { r.pool = got[i] || null; });
+  todo.forEach((r, i) => { r.pool = quick[i] || null; });
+  renderTokens(list, found, px, LAST.hint);
+
+  // The rest need a route through other pools, so they need the graph. If it
+  // is not built this does nothing and they stay unpriced until the sweep
+  // builds it - which is better than freezing the column for everyone.
+  const rest = todo.filter(r => !r.pool);
+  if (!rest.length) return;
+  const slow = await mapLimit(rest, 4, r => poolPrice(r.contract).catch(() => null));
+  if (mine !== PRICING) return;
+  rest.forEach((r, i) => { r.pool = slow[i] || null; });
   renderTokens(list, found, px, LAST.hint);
 }
 

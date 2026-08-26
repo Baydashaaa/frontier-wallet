@@ -1,4 +1,4 @@
-import { EXTRA_PAIRS, FACTORIES, LCD, amt, getJSON, smart } from './chain.js?v=66f765b7';
+import { EXTRA_PAIRS, FACTORIES, LCD, amt, getJSON, smart } from './chain.js?v=05dcb65c';
 
 /* ---------------- discovery and pricing ----------------
    The chain has no "which CW20 does this address hold" endpoint. Balances live
@@ -366,10 +366,15 @@ async function priceDirect(token){
   return priced[0];
 }
 
-async function poolPrice(token){
+// quick=true means: answer from what is already known. A cold graph is a
+// thousand reads, and nothing that runs while someone is watching the screen
+// should be allowed to start one.
+async function poolPrice(token, quick){
   // the cheap question first - it answers for most tokens
   const direct = await priceDirect(token).catch(() => null);
   if (direct) return direct;
+
+  if (quick && !GRAPH) return await bondPrice(token).catch(() => null);
 
   // no direct pool anywhere, so now it is worth knowing the whole market
   const g = await graph();
