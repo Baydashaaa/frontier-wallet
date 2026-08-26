@@ -1,8 +1,10 @@
-import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=73d3e550';
-import { DEC, cacheGet, cacheGetStale, cacheSet, graph, mapLimit, marketComplete, poolPrice, txCandidates } from './market.js?v=73d3e550';
-import { $, go } from './shell.js?v=73d3e550';
+import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=06044790';
+import { DEC, cacheGet, cacheGetStale, cacheSet, graph, mapLimit, marketComplete, poolPrice, txCandidates } from './market.js?v=06044790';
+import { $, go } from './shell.js?v=06044790';
 
-async function tokenRow(c, addr, known){
+// keep=true means this contract is on the address's list, so it earns a row
+// even at zero. Only an unknown contract has to prove itself with a balance.
+async function tokenRow(c, addr, known, keep){
   try {
     // The symbol, the decimals and the logo were fixed when this contract was
     // deployed. Only the balance is worth asking about again.
@@ -27,7 +29,7 @@ async function tokenRow(c, addr, known){
     const d = { symbol: fixed.sym, decimals: fixed.dec, name: fixed.note };
     DEC['cw20:' + c] = d.decimals;
     const v = amt(bal.data && bal.data.balance, d.decimals);
-    if (!(v > 0)) return null;
+    if (!(v > 0) && !keep) return null;
     // No pricing here. A balance is the one read that has to happen; a price is
     // many, and making the row wait on them is what left the screen empty.
     return { sym: d.symbol, v: v, note: d.name, logo: fixed.logo, pool: null, contract: c };
@@ -39,6 +41,33 @@ async function tokenRow(c, addr, known){
 // what the send screen is allowed to offer as "max"
 let LUNC_RAW = 0;
 const luncRaw = () => LUNC_RAW;
+
+/* ---------------- the address's own token list ----------------
+   This is the wallet's memory of what you hold, and it is only ever added to.
+   A sweep that came back short must never be able to shorten it - that is how
+   a token drops off the screen and then stops being looked for at all.
+*/
+function registry(addr){
+  const r = cacheGetStale('reg:' + addr);
+  if (Array.isArray(r)) return r;
+  // first run after the change: adopt whatever the old list knew, so nobody
+  // has to rediscover a wallet they already had
+  const old = cacheGetStale('held:' + addr);
+  const seed = Array.isArray(old) ? old : [];
+  cacheSet('reg:' + addr, seed);
+  return seed;
+}
+
+function remember(addr, contracts){
+  const merged = registry(addr).concat(contracts.filter(Boolean));
+  const out = merged.filter((c, i, a) => a.indexOf(c) === i);
+  cacheSet('reg:' + addr, out);
+  return out;
+}
+
+function forget(addr, contract){
+  cacheSet('reg:' + addr, registry(addr).filter(c => c !== contract));
+}
 
 let PRICING = 0;
 async function priceRows(list, found, px){
@@ -62,6 +91,11 @@ let LAST = { found: [], px: {}, hint: '' };
 // which the total is real but incomplete. TOTAL_SHOWN is the last one that was
 // not.
 let SWEEPING = false, TOTAL_SHOWN = null;
+// set by the button; makes the next load do a full sweep regardless of when
+// the last one ran
+let FORCE_SWEEP = false;
+// the address the visible list belongs to
+let LAST_ADDR = null;
 // What each token was worth the last time a sweep finished. A price that
 // blinks out to "no price" on every refresh reads as the token having lost its
 // market, which is a far bigger claim than "not asked yet".
@@ -195,6 +229,7 @@ function renderTokens(list, found, px, hint){
 })();
 
 async function loadBalances(addr){
+  LAST_ADDR = addr;
   const list = $('#tok-list');
   SWEEPING = true;
 
@@ -247,26 +282,25 @@ async function loadBalances(addr){
     // anything that talks to a pool.
     renderTokens(list, found, px, 'Reading your tokens.');
 
-    // What this address held last time, asked first. A wallet's contents
-    // hardly change between openings, so this is nearly always the whole list,
-    // and it arrives in one round instead of after five hundred queries.
-    const remembered = cacheGet('held:' + addr) || [];
-    const firstRound = CW20.concat(remembered.filter(c => CW20.indexOf(c) < 0));
+    // The list, and nothing but the list. This is the whole of a normal open.
+    const mine = registry(addr);
+    const firstRound = CW20.concat(mine.filter(c => CW20.indexOf(c) < 0));
 
-    // Sixty requests at once earns a 429 and a pile of retries, which is
-    // slower than asking politely eight at a time.
-    const seeded = await mapLimit(firstRound, 8, c => tokenRow(c, addr));
+    // Ten at a time: enough to finish in about a second, few enough that the
+    // node does not start refusing.
+    const seeded = await mapLimit(firstRound, 10, c => tokenRow(c, addr, undefined, true));
     for (const r of seeded) if (r) found.push(r);
-    renderTokens(list, found, px, remembered.length
-      ? 'Checking for anything new.'
-      : 'Checking the rest of the market for tokens you hold. First open takes a moment.');
+    remember(addr, seeded.filter(Boolean).map(r => r.contract));
+    // From here the list is complete as far as this address knows, so the
+    // total is honest even though prices are still arriving.
+    SWEEPING = false;
+    renderTokens(list, found, px, '');
     priceRows(list, found, px);   // deliberately not awaited
 
     // then everything that trades anywhere, which is the part nobody should
     // have to maintain by hand
     // two sources, one list: what trades somewhere, and what ever arrived here.
     // Contracts that are not tokens at all just answer nothing to balance{}.
-    const [g, txc] = await Promise.all([graph(), txCandidates(addr).catch(() => [])]);
     const seed = {};
     for (const c of firstRound) seed[c] = 1;
     // The full sweep asks balance{} of every contract the market knows - two
@@ -274,9 +308,21 @@ async function loadBalances(addr){
     // barely changes between openings, and the remembered list above already
     // covers everything this address holds, so the sweep runs on a schedule
     // instead of on every open. A new token arriving is worth an hour's wait.
-    const SWEEP_EVERY = 60 * 60 * 1000;
+    // Once a day on its own, or whenever you press the button. Never in the
+    // way of the balances above.
+    const SWEEP_EVERY = 24 * 60 * 60 * 1000;
     const sweptAt = Number(cacheGetStale('swept:' + addr) || 0);
-    const skipSweep = Date.now() - sweptAt < SWEEP_EVERY;
+    const skipSweep = !FORCE_SWEEP && Date.now() - sweptAt < SWEEP_EVERY;
+    FORCE_SWEEP = false;
+    if (!skipSweep) {
+      SWEEPING = true;
+      renderTokens(list, found, px, 'Looking for tokens this address has not seen before.');
+    }
+    // The graph is a thousand reads. It is only built when something is
+    // actually going to be done with it.
+    const [g, txc] = skipSweep
+      ? [{ tokens: [] }, []]
+      : await Promise.all([graph(), txCandidates(addr).catch(() => [])]);
     const rest = skipSweep ? [] : g.tokens.concat(txc)
       .filter((c, i, a) => !seed[c] && a.indexOf(c) === i);
     if (!skipSweep) cacheSet('swept:' + addr, Date.now());
@@ -299,10 +345,8 @@ async function loadBalances(addr){
     // which is exactly how UST1 disappeared instead of merely arriving late.
     // A token spent to zero costs one wasted query per open, which is cheap
     // next to forgetting one you still own.
-    const held = (cacheGetStale('held:' + addr) || [])
-      .concat(found.map(r => r.contract).filter(Boolean))
-      .concat(hits.map(h => h.c));
-    cacheSet('held:' + addr, held.filter((c, i, a) => c && a.indexOf(c) === i));
+    // anything the sweep turned up joins the list for good
+    remember(addr, found.map(r => r.contract).concat(hits.map(h => h.c)));
     await priceRows(list, found, px);
     // everything that could be found has been found and priced; from here the
     // total is the whole wallet
@@ -400,4 +444,21 @@ function openWallet(addr){
 // The swap screen needs the same rows the list is drawn from, priced and all.
 // Handing back LAST.found beats asking the chain a second time.
 const heldTokens = () => LAST.found || [];
-export { heldTokens, luncRaw, openWallet, refreshBalances };
+export { forget, registry, remember, heldTokens, luncRaw, openWallet, refreshBalances };
+
+// A sweep is two hundred requests. It is worth doing on demand and worth not
+// doing otherwise, so it gets a button that says what it is doing.
+(function wireScan(){
+  const b = $('#tok-scan');
+  if (!b) return;
+  b.addEventListener('click', async () => {
+    if (b.dataset.busy || !LAST_ADDR) return;
+    b.dataset.busy = '1';
+    const was = b.textContent;
+    b.textContent = 'looking...';
+    FORCE_SWEEP = true;
+    try { await loadBalances(LAST_ADDR); } catch (e) { /* the banner reports it */ }
+    b.textContent = was;
+    delete b.dataset.busy;
+  });
+})();
