@@ -1,5 +1,5 @@
-import { $, report, tg } from './shell.js?v=06044790';
-import { S } from './state.js?v=06044790';
+import { $, report, tg } from './shell.js?v=66f765b7';
+import { S } from './state.js?v=66f765b7';
 
 /* ---------------- storage ----------------
    SecureStorage is backed by the iOS Keychain and the Android Keystore,
@@ -28,19 +28,52 @@ const Store = (() => {
     try { fn.call(api, ...args, (err, val) => err ? rej(err) : res(val)); }
     catch (e) { rej(e); }
   });
+
+  // Presence is not support. Telegram Desktop hands out a SecureStorage object
+  // and a version high enough to pass any check, then answers UNSUPPORTED when
+  // you use it - because the thing behind it is a phone's keychain. So when a
+  // store refuses, we move to the next one rather than report and stop.
+  function stepDown(){
+    if (kind === 'secure' && tg && tg.CloudStorage && atLeast('6.9')) {
+      kind = 'cloud'; api = tg.CloudStorage;
+      return true;
+    }
+    if (kind === 'secure' || kind === 'cloud') {
+      kind = 'local'; api = null;
+      return true;
+    }
+    return false;
+  }
   return {
     get kind(){ return kind; },
     async save(v){
-      if (api) { await call(api.setItem, KEY, v); return; }
-      if (kind === 'local') {
-        try { localStorage.setItem(KEY, v); return; }
-        catch (e) { /* private mode or a full quota - memory is what is left */ }
+      // three attempts at most, one per rung of the ladder
+      for (let i = 0; i < 3; i++) {
+        if (api) {
+          try { await call(api.setItem, KEY, v); return; }
+          catch (e) { if (!stepDown()) break; continue; }
+        }
+        if (kind === 'local') {
+          try { localStorage.setItem(KEY, v); return; }
+          catch (e) { /* private mode or a full quota - memory is what is left */ }
+        }
+        break;
       }
       mem = v;
     },
     async load(){
-      if (api) { try { return await call(api.getItem, KEY); } catch (e) { return null; } }
-      if (kind === 'local') { try { return localStorage.getItem(KEY); } catch (e) { return null; } }
+      // A wallet saved before this fix is sitting in whichever store answered
+      // last time, so every rung is checked rather than only the current one.
+      if (api) {
+        try {
+          const v = await call(api.getItem, KEY);
+          if (v) return v;
+        } catch (e) { stepDown(); return this.load(); }
+      }
+      try {
+        const v = localStorage.getItem(KEY);
+        if (v) return v;
+      } catch (e) {}
       return mem;
     },
     async clear(){
@@ -58,6 +91,7 @@ function showStore(){
   if (!el) return;
   const label = Store.kind === 'secure' ? 'device keychain'
               : Store.kind === 'cloud'  ? 'telegram cloud'
+              : Store.kind === 'local' ? 'this device\u2019s browser storage'
               : 'memory only, nothing is saved';
   el.innerHTML = 'stored in <b>' + label + '</b>';
   el.classList.toggle('weak', Store.kind !== 'secure');
