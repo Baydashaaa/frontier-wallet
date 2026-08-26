@@ -1,6 +1,6 @@
-import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=05dcb65c';
-import { DEC, cacheGet, cacheGetStale, cacheSet, graph, mapLimit, marketComplete, poolPrice, txCandidates } from './market.js?v=05dcb65c';
-import { $, go } from './shell.js?v=05dcb65c';
+import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=89e16afa';
+import { DEC, cacheGet, cacheGetStale, cacheSet, graph, mapLimit, marketComplete, poolPrice, txCandidates } from './market.js?v=89e16afa';
+import { $, go } from './shell.js?v=89e16afa';
 
 // keep=true means this contract is on the address's list, so it earns a row
 // even at zero. Only an unknown contract has to prove itself with a balance.
@@ -110,6 +110,8 @@ let SWEEPING = false, TOTAL_SHOWN = null;
 let FORCE_SWEEP = false;
 // the address the visible list belongs to
 let LAST_ADDR = null;
+// One pass at a time, and not more often than the chain produces blocks.
+let RUNNING = false, LOADED_AT = 0;
 // What each token was worth the last time a sweep finished. A price that
 // blinks out to "no price" on every refresh reads as the token having lost its
 // market, which is a far bigger claim than "not asked yet".
@@ -242,10 +244,19 @@ function renderTokens(list, found, px, hint){
   });
 })();
 
-async function loadBalances(addr){
+// force=true is the button and the post-send refresh: those know something
+// changed and are worth interrupting the schedule for. Everything else is
+// polling and can be skipped.
+async function loadBalances(addr, force){
+  // The guard lives here because there is no other way in. Callers used to
+  // reach around it, which is how three passes ended up sharing one list.
+  if (RUNNING) return;
+  if (!force && addr === LAST_ADDR && Date.now() - LOADED_AT < 15000) return;
+  RUNNING = true;
   LAST_ADDR = addr;
   const list = $('#tok-list');
   SWEEPING = true;
+  try {
 
   // The last complete reading, drawn before a single request goes out. It is
   // minutes old at worst and it is replaced as soon as the chain answers - but
@@ -386,6 +397,10 @@ async function loadBalances(addr){
     // a failed read is not a zero balance, and must not be drawn as one
     if (TOTAL_SHOWN === null) $('#bal-total').textContent = '\u2014';
   }
+  } finally {
+    RUNNING = false;
+    LOADED_AT = Date.now();
+  }
 }
 
 async function loadStaking(addr){
@@ -423,19 +438,17 @@ async function loadStaking(addr){
 
 // Which address the screen is showing, so anything can ask for a fresh read
 // without carrying the address around.
-let ADDR = '', LAST_AT = 0, BUSY = false;
+// Two sessions each kept the address under their own name. One of them had
+// to go, and the guard they each half-implemented now lives in loadBalances.
 
 // A balance changes when a block lands, not when a transaction was signed, so
 // the screen has to be told to look again. Two guards: never twice at once,
 // and never more often than every fifteen seconds - the chain does not move
 // faster than that, and neither should the polling.
 async function refreshBalances(force){
-  if (!ADDR || BUSY) return;
-  if (!force && Date.now() - LAST_AT < 15000) return;
-  BUSY = true;
-  try { await loadBalances(ADDR); }
+  if (!LAST_ADDR) return;
+  try { await loadBalances(LAST_ADDR, force); }
   catch (e) { /* a failed refresh is not a failed swap */ }
-  finally { BUSY = false; LAST_AT = Date.now(); }
 }
 
 // Only while the wallet is actually on screen. A mini app that keeps polling
@@ -448,7 +461,7 @@ setInterval(() => { if (onHome()) refreshBalances(false); }, 45000);
 document.addEventListener('visibilitychange', () => { if (onHome()) refreshBalances(false); });
 
 function openWallet(addr){
-  ADDR = addr;
+  LAST_ADDR = addr;
   $('#home-addr').textContent = addr.slice(0,14) + '\u2026' + addr.slice(-6);
   go('home');
   loadBalances(addr);
@@ -471,7 +484,7 @@ export { forget, registry, remember, heldTokens, luncRaw, openWallet, refreshBal
     const was = b.textContent;
     b.textContent = 'looking...';
     FORCE_SWEEP = true;
-    try { await loadBalances(LAST_ADDR); } catch (e) { /* the banner reports it */ }
+    try { await loadBalances(LAST_ADDR, true); } catch (e) { /* the banner reports it */ }
     b.textContent = was;
     delete b.dataset.busy;
   });
