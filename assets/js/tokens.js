@@ -1,6 +1,6 @@
-import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=7465d17f';
-import { DEC, cacheGet, cacheGetStale, cacheSet, graph, mapLimit, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=7465d17f';
-import { $, go } from './shell.js?v=7465d17f';
+import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=6047363b';
+import { DEC, cacheGet, cacheGetStale, cacheSet, graph, mapLimit, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=6047363b';
+import { $, go } from './shell.js?v=6047363b';
 
 // keep=true means this contract is on the address's list, so it earns a row
 // even at zero. Only an unknown contract has to prove itself with a balance.
@@ -83,7 +83,9 @@ async function priceRows(list, found, px){
   // waiting on whichever token is slowest.
   const quick = await mapLimit(todo, 10, r => poolPrice(r.contract, true).catch(() => null));
   if (mine !== PRICING) return;   // a newer pass has started, this one is stale
-  todo.forEach((r, i) => { r.pool = quick[i] || null; });
+  // tried, whatever the answer. Without this a row with no price is
+  // indistinguishable from a row whose price has not been asked for yet.
+  todo.forEach((r, i) => { r.pool = quick[i] || null; r.tried = true; });
   renderTokens(list, found, px, LAST.hint);
 
   // The rest need a route through other pools, so they need the graph. If it
@@ -93,7 +95,7 @@ async function priceRows(list, found, px){
   if (!rest.length) return;
   const slow = await mapLimit(rest, 4, r => poolPrice(r.contract).catch(() => null));
   if (mine !== PRICING) return;
-  rest.forEach((r, i) => { r.pool = slow[i] || null; });
+  rest.forEach((r, i) => { r.pool = slow[i] || null; r.tried = true; });
   renderTokens(list, found, px, LAST.hint);
 }
 
@@ -220,14 +222,20 @@ function renderTokens(list, found, px, hint){
   // The list may fill in as tokens are found - that reads as progress. The
   // total may not: a number that drops to a fifth and climbs back looks like
   // money went missing, and after a swap that is a frightening thing to show.
+  // A total is complete when every token in it has had its price asked for -
+  // not when the sweep happens to be idle. The balances arrive long before the
+  // prices do, and calling that moment "complete" is what froze $2.34 over a
+  // list worth two hundred.
+  const waiting = rows.some(r => r.fiat === null && r.t.contract && !r.t.tried);
   const totalEl = $('#bal-total');
-  if (!SWEEPING) {
+  if (!waiting && !SWEEPING) {
     TOTAL_SHOWN = total;
     totalEl.textContent = usd(total);
     totalEl.classList.remove('stale');
-  } else if (TOTAL_SHOWN !== null) {
-    // a refresh keeps the last complete figure, dimmed, rather than guessing
-    totalEl.textContent = usd(TOTAL_SHOWN);
+  } else {
+    // Dimmed and climbing as prices land. It reads as loading, which is what
+    // it is; a frozen figure reads as final, which it is not.
+    totalEl.textContent = usd(Math.max(total, waiting ? 0 : (TOTAL_SHOWN || 0)));
     totalEl.classList.add('stale');
   }
   // on a cold start there is nothing honest to put here yet, so the placeholder

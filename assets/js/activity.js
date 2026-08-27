@@ -4,9 +4,9 @@
 // решает, что попадёт в выборку. message.sender находит всё, что адрес
 // подписывал - переводы, свапы, стейкинг. Полученное он не видит вовсе, его
 // приходится спрашивать отдельно по получателю, а потом склеивать по хешу.
-import { LCD, amt, fmt, getJSON } from './chain.js?v=7465d17f';
-import { $ } from './shell.js?v=7465d17f';
-import { S } from './state.js?v=7465d17f';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=6047363b';
+import { $ } from './shell.js?v=6047363b';
+import { S } from './state.js?v=6047363b';
 
 const FINDER = 'https://finder.terra.money/classic/tx/';
 let LOADED = '';
