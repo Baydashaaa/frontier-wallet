@@ -1,4 +1,4 @@
-import { EXTRA_PAIRS, FACTORIES, LCD, amt, getJSON, smart } from './chain.js?v=89e16afa';
+import { EXTRA_PAIRS, FACTORIES, LCD, amt, getJSON, smart } from './chain.js?v=7465d17f';
 
 /* ---------------- discovery and pricing ----------------
    The chain has no "which CW20 does this address hold" endpoint. Balances live
@@ -111,9 +111,63 @@ async function contractsByCode(code){
 let MARKET_COMPLETE = true;
 const marketComplete = () => MARKET_COMPLETE;
 
+/* ---------------- the market map ----------------
+   Our own proxy in front of OrbitWire. It exists because their API sends no
+   CORS header, and it caches so their service sees one request a minute from
+   all of us rather than one per wallet open.
+
+   This is a map, not a price feed. It says which pools exist and where; what
+   is in them we still read ourselves.
+*/
+const OW_URL = 'https://orbitwire-proxy.vladislav-baydan.workers.dev/pairs';
+
+let OW = null;
+const owKey = t => (t.type === 'NATIVE' || String(t.address).slice(0, 6) !== 'terra1')
+  ? 'native:' + t.address : 'cw20:' + t.address;
+
+async function owMarket(){
+  if (OW !== null) return OW;
+  let raw = cacheGet('ow');
+  if (!raw) {
+    try {
+      const r = await getJSON(OW_URL, 15000);
+      if (r && r.ok && Array.isArray(r.pairs) && r.pairs.length) {
+        raw = r.pairs;
+        cacheSet('ow', raw);
+      }
+    } catch (e) { raw = null; }
+  }
+  if (!raw) { OW = false; return false; }   // false, not null: asked and failed
+
+  const edges = {}, tokens = [], seen = {}, logos = {}, decs = {};
+  for (const p of raw) {
+    if (!p.base || !p.quote || !p.pool) continue;
+    const a = owKey(p.base), b = owKey(p.quote);
+    (edges[a] = edges[a] || []).push({ to: b, pair: p.pool });
+    (edges[b] = edges[b] || []).push({ to: a, pair: p.pool });
+    for (const t of [p.base, p.quote]) {
+      const k = owKey(t);
+      if (t.logo && !logos[k]) logos[k] = t.logo;
+      if (t.decimals !== undefined && t.decimals !== null) decs[k] = t.decimals;
+      if (k.slice(0, 5) === 'cw20:' && !seen[k]) { seen[k] = 1; tokens.push(k.slice(5)); }
+    }
+  }
+  OW = { edges: edges, tokens: tokens, logos: logos, decs: decs, count: raw.length };
+  // decimals from the map save a token_info call each
+  for (const k in decs) if (DEC[k] === undefined) DEC[k] = decs[k];
+  return OW;
+}
+
+const owLogo = contract => (OW && OW.logos['cw20:' + contract]) || null;
+
 let GRAPH = null;
 async function graph(){
   if (GRAPH) return GRAPH;
+
+  // The map covers Garuda, both Terraports, Terraswap and Weso DeFi. It does
+  // not cover CL8Y or TwingoSwap, so the factory walk below still runs and the
+  // two are merged - but the thousand-read cold start is gone either way.
+  const ow = await owMarket();
   // A stored list is only believed if it names every exchange. Short lists
   // used to look exactly like real ones.
   const stored = cacheGet('pairs');
@@ -199,6 +253,14 @@ async function graph(){
       if (k.slice(0, 5) === 'cw20:' && !seen[k]) { seen[k] = 1; tokens.push(k.slice(5)); }
     }
   }
+  if (ow) {
+    // the map first, so its pools are found even if a factory answered short
+    for (const k in ow.edges) {
+      edges[k] = (edges[k] || []).concat(ow.edges[k]);
+    }
+    for (const t of ow.tokens) if (tokens.indexOf(t) < 0) tokens.push(t);
+  }
+
   GRAPH = { edges: edges, tokens: tokens };
   return GRAPH;
 }
@@ -321,6 +383,19 @@ async function directPairs(token){
   // between two openings of a wallet.
   const hit = cacheGet('pair:' + token);
   if (hit) return hit;
+
+  // If the map knows this token, it already says which pools pair it with
+  // LUNC - five factory questions answered by a list we have in hand.
+  const ow = await owMarket();
+  if (ow) {
+    const mine = (ow.edges['cw20:' + token] || [])
+      .filter(e => e.to === LUNC_KEY).map(e => e.pair);
+    if (mine.length) {
+      cacheSet('pair:' + token, mine);
+      return mine;
+    }
+  }
+
   const want = [];
   // A factory that fell over is not a factory that answered "no pair". Without
   // this the two look identical, and one 500 hides a token's price for as long
@@ -389,4 +464,4 @@ async function poolPrice(token, quick){
   return await bondPrice(token).catch(() => null);
 }
 
-export { DEC, cacheGet, cacheGetStale, cacheSet, directPairs, graph, mapLimit, marketComplete, poolPrice, txCandidates };
+export { DEC, cacheGet, cacheGetStale, cacheSet, directPairs, graph, mapLimit, marketComplete, owLogo, owMarket, poolPrice, txCandidates };

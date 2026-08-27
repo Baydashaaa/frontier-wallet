@@ -1,6 +1,6 @@
-import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=89e16afa';
-import { DEC, cacheGet, cacheGetStale, cacheSet, graph, mapLimit, marketComplete, poolPrice, txCandidates } from './market.js?v=89e16afa';
-import { $, go } from './shell.js?v=89e16afa';
+import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=7465d17f';
+import { DEC, cacheGet, cacheGetStale, cacheSet, graph, mapLimit, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=7465d17f';
+import { $, go } from './shell.js?v=7465d17f';
 
 // keep=true means this contract is on the address's list, so it earns a row
 // even at zero. Only an unknown contract has to prove itself with a balance.
@@ -22,7 +22,10 @@ async function tokenRow(c, addr, known, keep){
         sym: t.symbol,
         dec: t.decimals,
         note: t.name,
-        logo: (await chainLogo(c, mkt).catch(() => null)) || null
+        // the contract's own logo first, then the map's. Eight of your tokens
+        // have nothing in marketing_info, and the chain simply has no picture
+        // for them - it has to come from somewhere else or not at all.
+        logo: (await chainLogo(c, mkt).catch(() => null)) || owLogo(c) || null
       };
       cacheSet('ti:' + c, fixed);
     }
@@ -308,6 +311,9 @@ async function loadBalances(addr, force){
     renderTokens(list, found, px, 'Reading your tokens.');
 
     // The list, and nothing but the list. This is the whole of a normal open.
+    // one request, and every logo and decimal below comes for free
+    await owMarket().catch(() => null);
+
     const mine = registry(addr);
     const firstRound = CW20.concat(mine.filter(c => CW20.indexOf(c) < 0));
 
