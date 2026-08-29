@@ -1,6 +1,6 @@
-import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=625083e9';
-import { DEC, cacheGet, cacheGetStale, cacheSet, graph, mapLimit, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=625083e9';
-import { $, go } from './shell.js?v=625083e9';
+import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=0448b7df';
+import { DEC, cacheGet, cacheGetStale, cacheSet, graph, graphReady, mapLimit, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=0448b7df';
+import { $, go } from './shell.js?v=0448b7df';
 
 // keep=true means this contract is on the address's list, so it earns a row
 // even at zero. Only an unknown contract has to prove itself with a balance.
@@ -80,9 +80,18 @@ async function priceRows(list, found, px){
   // silence. `asking` means an earlier pass is in flight on it right now -
   // without that flag the sweep's pass re-requested every token the opening
   // pass had not finished paying for yet.
-  const todo = found.filter(r => r.contract && !r.pool && !r.tried && !r.asking && !px[r.sym]);
+  //
+  // `deferred` is the exception to `tried`: the row was not answered, it was
+  // set aside because pricing it needed a market map nobody had yet. Once the
+  // sweep has built one, it is worth asking again - and only then.
+  // Asked once here rather than once per row: it reads a stored pair list of
+  // several hundred entries out of localStorage, and nothing can build the
+  // graph between this line and the end of this pass anyway.
+  const ready = graphReady();
+  const todo = found.filter(r => r.contract && !r.pool && !r.asking && !px[r.sym] &&
+    (!r.tried || (r.deferred && ready)));
   if (!todo.length) return;
-  todo.forEach(r => { r.asking = true; });
+  todo.forEach(r => { r.asking = true; r.deferred = false; });
 
   // What can be answered from a direct pool or a bonding curve, which is most
   // of any wallet. Drawn as soon as it is in, so the screen fills instead of
@@ -98,13 +107,25 @@ async function priceRows(list, found, px){
   if (mine !== PRICING) return;   // a newer pass owns the screen
   renderTokens(list, found, px, LAST.hint);
 
-  // The rest need a route through other pools, so they need the graph. If it
-  // is not built this does nothing and they stay unpriced until the sweep
-  // builds it - which is better than freezing the column for everyone.
+  // The rest have no direct pool and no curve, so pricing them means routing
+  // through other pools, which means the whole market map. That comment above
+  // poolPrice - nothing that runs while someone is watching the screen should
+  // start a cold graph - was true, but this call was the one starting it: a
+  // thousand reads fired in the background of an ordinary open, quietly eating
+  // the same six-wide queue everything else was waiting in.
+  //
+  // Set aside instead. The daily sweep builds the map for its own reasons and
+  // the pass that follows it picks these up; the scan button forces the same
+  // thing on demand. A handful of tokens priced a load late beats every load
+  // being slow.
   const rest = todo.filter(r => !r.pool);
   if (!rest.length) return;
+  if (!ready) {
+    rest.forEach(r => { r.deferred = true; });
+    return;
+  }
   const slow = await mapLimit(rest, 4, r => poolPrice(r.contract).catch(() => null));
-  rest.forEach((r, i) => { if (slow[i]) r.pool = slow[i]; r.tried = true; r.asking = false; });
+  rest.forEach((r, i) => { if (slow[i]) r.pool = slow[i]; r.tried = true; r.asking = false; r.deferred = false; });
   if (mine !== PRICING) return;
   renderTokens(list, found, px, LAST.hint);
 }

@@ -4,12 +4,12 @@
 // пул сам умеет ответить, сколько отдаст за конкретную сумму, с учётом
 // проскальзывания и комиссии. Считать это самому - значит показать одно
 // число, а получить другое.
-import { amt, fmt, iconHTML, paintIcons, smart } from './chain.js?v=625083e9';
-import { $, go, tap } from './shell.js?v=625083e9';
-import { directPairs } from './market.js?v=625083e9';
-import { heldTokens, refreshBalances } from './tokens.js?v=625083e9';
-import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=625083e9';
-import { S } from './state.js?v=625083e9';
+import { amt, fmt, iconHTML, paintIcons, smart } from './chain.js?v=0448b7df';
+import { $, go, tap } from './shell.js?v=0448b7df';
+import { directPairs } from './market.js?v=0448b7df';
+import { heldTokens, refreshBalances } from './tokens.js?v=0448b7df';
+import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=0448b7df';
+import { S } from './state.js?v=0448b7df';
 
 const LUNC = { sym: 'LUNC', denom: 'uluna', dec: 6, native: true };
 let FROM = LUNC, TO = null, TIMER = null, SEQ = 0;

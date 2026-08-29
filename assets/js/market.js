@@ -1,4 +1,4 @@
-import { EXTRA_PAIRS, FACTORIES, LCD, amt, getJSON, smart } from './chain.js?v=625083e9';
+import { EXTRA_PAIRS, FACTORIES, LCD, amt, getJSON, smart } from './chain.js?v=0448b7df';
 
 /* ---------------- discovery and pricing ----------------
    The chain has no "which CW20 does this address hold" endpoint. Balances live
@@ -161,6 +161,17 @@ async function owMarket(){
 const owLogo = contract => (OW && OW.logos['cw20:' + contract]) || null;
 
 let GRAPH = null;
+
+// True when graph() would answer from memory or from a stored pair list that
+// names every exchange - that is, without a single request. False means a cold
+// build: a thousand reads, and a caller that cannot afford them should wait
+// for the sweep instead of starting one.
+function graphReady(){
+  if (GRAPH) return true;
+  const stored = cacheGet('pairs');
+  return !!(stored && stored.pairs && FACTORIES.every(f => stored.by && stored.by[f.n] > 0));
+}
+
 async function graph(){
   if (GRAPH) return GRAPH;
 
@@ -483,4 +494,4 @@ async function poolPrice(token, quick){
   return await bondPrice(token).catch(() => null);
 }
 
-export { DEC, cacheGet, cacheGetStale, cacheSet, directPairs, graph, mapLimit, marketComplete, owLogo, owMarket, poolPrice, txCandidates };
+export { DEC, cacheGet, cacheGetStale, cacheSet, directPairs, graph, graphReady, mapLimit, marketComplete, owLogo, owMarket, poolPrice, txCandidates };
