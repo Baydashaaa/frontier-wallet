@@ -4,12 +4,12 @@
 // пул сам умеет ответить, сколько отдаст за конкретную сумму, с учётом
 // проскальзывания и комиссии. Считать это самому - значит показать одно
 // число, а получить другое.
-import { amt, fmt, iconHTML, paintIcons, usd } from './chain.js?v=c183dc62';
-import { $, go, tap } from './shell.js?v=c183dc62';
-import { assetOf, directPeers, gdInfo, poolsBetween, reserves, simulateSwap } from './market.js?v=c183dc62';
-import { fiatOf, heldTokens, refreshBalances } from './tokens.js?v=c183dc62';
-import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=c183dc62';
-import { S } from './state.js?v=c183dc62';
+import { amt, fmt, iconHTML, paintIcons, usd } from './chain.js?v=de1daa50';
+import { $, go, tap } from './shell.js?v=de1daa50';
+import { assetOf, directPeers, gdInfo, poolsBetween, reserves, simulateSwap } from './market.js?v=de1daa50';
+import { fiatOf, heldTokens, refreshBalances } from './tokens.js?v=de1daa50';
+import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=de1daa50';
+import { S } from './state.js?v=de1daa50';
 
 const LUNC = { sym: 'LUNC', denom: 'uluna', dec: 6, native: true };
 let FROM = LUNC, TO = null, TIMER = null, SEQ = 0;
@@ -42,10 +42,23 @@ function tokenFor(key){
   return base;
 }
 
+// Terra's original basket of on-chain stablecoins - ukrw, ueur, uidr, umnt and
+// the rest - still exists, still has the odd pool, and is still dead. They are
+// not worth a row, and a rule beats a list: every one of them is a short `u`
+// denom, and the only two that matter are named.
+const LEGACY = d => /^u[a-z]{2,4}$/.test(String(d || '')) && d !== 'uluna' && d !== 'uusd';
+
+// Under this a pool cannot absorb a trade worth doing, so offering it as a
+// destination is offering a trap.
+const THIN_POOL = 50;      // dollars of liquidity, from the market map
+
 // Tradeable means the map knows a pool holding it. Not "has a route to LUNC",
 // which is what this used to mean and why a token with three healthy pools of
 // its own counted as unswappable.
-const swappable = t => !!t && directPeers(keyOf(t)).length > 0;
+function peersOf(t){
+  return directPeers(keyOf(t)).filter(p => p.liq >= THIN_POOL && !LEGACY(p.key.slice(7)));
+}
+const swappable = t => !!t && !LEGACY(t.denom) && peersOf(t).length > 0;
 
 function decOf(t){
   const d = Number(t && t.dec);
@@ -121,7 +134,7 @@ function paintZones(){
 }
 
 function fillPickers(){
-  const peers = directPeers(keyOf(FROM));
+  const peers = peersOf(FROM);
   // Both sides starting as LUNC is not a trade, and the old default did exactly
   // that whenever the wallet held nothing else priced against it.
   if ((!TO || keyOf(TO) === keyOf(FROM)) && peers.length) TO = tokenFor(peers[0].key);
@@ -141,16 +154,41 @@ function fillPickers(){
 // can only shuffle what is already in the wallet.
 function sheetRows(side){
   if (side === 'from') {
-    const mine = heldTokens().filter(t => (t.v || 0) > 0 && swappable(t));
+    const mine = heldTokens().filter(function (t) {
+      if (!((t.v || 0) > 0) || !swappable(t)) return false;
+      const f = fiatOf(t);
+      return f === null || f >= 0.01;
+    });
     const lunc = pick('LUNC');
     if (lunc && !mine.some(t => t.sym === 'LUNC')) mine.unshift(lunc);
     return mine;
   }
-  return directPeers(keyOf(FROM)).map(p => tokenFor(p.key)).filter(Boolean);
+  return peersOf(FROM).map(p => tokenFor(p.key)).filter(Boolean);
 }
 
-function openSheet(side){
-  const all = sheetRows(side);
+// The search field is built once and lives above the list. It is not in the
+// markup because it belongs to this screen's behaviour rather than its shape,
+// and the sheet is the only thing that opens it.
+let FIND = null;
+function findBox(){
+  if (FIND) return FIND;
+  const wrap = document.createElement('div');
+  wrap.className = 'sw-find';
+  wrap.innerHTML = '<svg viewBox="0 0 24 24" class="sw-find-i">' +
+    '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>' +
+    '<input id="sw-q" type="text" autocomplete="off" spellcheck="false" ' +
+    'placeholder="Search by ticker">';
+  const list = $('#sw-list');
+  list.parentNode.insertBefore(wrap, list);
+  FIND = wrap.querySelector('input');
+  FIND.addEventListener('input', function () { drawSheet(); });
+  return FIND;
+}
+
+let SHEET_SIDE = 'from';
+function drawSheet(){
+  const q = (FIND && FIND.value || '').trim().toUpperCase();
+  const all = sheetRows(SHEET_SIDE).filter(t => !q || String(t.sym).toUpperCase().indexOf(q) >= 0);
   const list = $('#sw-list');
   list.innerHTML = all.length ? all.map(function (t) {
     const f = fiatOf(t);
@@ -160,13 +198,29 @@ function openSheet(side){
         '<span class="sw-item-v">' + ((t.v || 0) > 0 ? fmt(t.v) : '') + '</span>' +
         '<span class="sw-item-u">' + (f !== null && f > 0 ? usd(f) : '') + '</span>' +
       '</span></button>';
-  }).join('') : '<div class="sw-none">Nothing here shares a pool with ' + FROM.sym + '.</div>';
+  }).join('') : '<div class="sw-none">' + (q
+    ? 'Nothing here matches ' + q + '.'
+    : 'Nothing shares a pool with ' + FROM.sym + '.') + '</div>';
   paintIcons(list);
+}
+
+function openSheet(side){
+  SHEET_SIDE = side;
+  const box = findBox();
+  box.value = '';
+  drawSheet();
   const sheet = $('#sw-sheet');
   sheet.dataset.side = side;
   sheet.hidden = false;
+  // A count is the one thing a search box cannot tell you before you type.
+  const n = $('#sw-count');
+  if (n) n.textContent = sheetRows(side).length + ' available';
 }
-const closeSheet = () => { $('#sw-sheet').hidden = true; };
+const closeSheet = () => {
+  $('#sw-sheet').hidden = true;
+  // the keyboard follows the sheet down rather than staying up over the screen
+  if (FIND) FIND.blur();
+};
 
 // The slider spends a share of what is actually held, so it has nothing to say
 // until a balance is known.
@@ -313,6 +367,15 @@ $('#sw-flip').addEventListener('click', () => {
   $('#sw-out').textContent = '-';
   fillPickers(); detail([]);
 });
+
+(function () {
+  const top = document.querySelector('.sw-sheet-top');
+  if (top && !document.getElementById('sw-count')) {
+    const n = document.createElement('span');
+    n.id = 'sw-count';
+    top.insertBefore(n, top.lastElementChild);
+  }
+})();
 
 // экран открывается из консоли на главной
 const btn = document.getElementById('act-swap');

@@ -420,22 +420,55 @@ textarea{resize:none;min-height:110px;line-height:1.8}
 .sw-sheet{position:fixed;inset:0;z-index:50;background:rgba(6,9,16,.72);
   display:flex;align-items:flex-end;backdrop-filter:blur(3px)}
 .sw-sheet[hidden]{display:none}
-.sw-sheet-in{width:100%;max-width:520px;margin:0 auto;background:#12182A;
-  border-top:1px solid #1E2A42;border-radius:18px 18px 0 0;
-  padding:14px 16px calc(18px + env(safe-area-inset-bottom,0px));
-  max-height:72vh;display:flex;flex-direction:column;
+/* The sheet used to be a flat panel with a browser scrollbar down its side.
+   It reads as part of the app now: a lit top edge where it meets the dim
+   screen behind it, a grab handle that says which way it closes, and a track
+   that belongs to the same palette as everything else. */
+.sw-sheet-in{width:100%;max-width:520px;margin:0 auto;
+  background:linear-gradient(180deg,#18203A 0,var(--surface) 120px);
+  border-top:1px solid rgba(0,212,255,.28);border-radius:22px 22px 0 0;
+  box-shadow:0 -20px 50px -20px rgba(0,0,0,.8),0 -1px 0 rgba(123,92,255,.35);
+  padding:10px 16px calc(18px + env(safe-area-inset-bottom,0px));
+  max-height:78vh;display:flex;flex-direction:column;
   animation:sw-up .22s cubic-bezier(.2,.9,.3,1) both}
+.sw-sheet-in::before{content:'';display:block;width:38px;height:4px;flex:none;
+  margin:2px auto 10px;border-radius:2px;background:var(--border)}
 @keyframes sw-up{from{transform:translateY(14%)}to{transform:none}}
 .sw-sheet-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;
   font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
 .sw-x{background:none;border:0;color:#00D4FF;font-family:inherit;font-size:12px;
   font-weight:600;cursor:pointer;padding:4px}
-.sw-list{overflow-y:auto;display:flex;flex-direction:column}
+#sw-count{font-family:'Rajdhani',sans-serif;font-size:11px;letter-spacing:.08em;
+  color:var(--muted);text-transform:none}
+
+/* A ticker is short and the list is long, so the field earns its place the
+   moment there is more than a screenful. */
+.sw-find{position:relative;display:flex;align-items:center;margin:2px 0 10px;flex:none}
+.sw-find-i{position:absolute;left:11px;width:15px;height:15px;pointer-events:none;
+  stroke:var(--muted);stroke-width:2;fill:none;stroke-linecap:round}
+.sw-find input{width:100%;background:var(--surface2);border:1px solid var(--border);
+  border-radius:11px;padding:10px 12px 10px 34px;color:var(--text);
+  font-family:inherit;font-size:14px;outline:none;transition:border-color .15s}
+.sw-find input::placeholder{color:var(--muted)}
+.sw-find input:focus{border-color:var(--accent2)}
+
+/* Firefox takes the two-value form; WebKit needs the pseudo-elements. Both say
+   the same thing: a thin track in the app's own colours instead of the
+   platform's grey bar down the middle of the sheet. */
+.sw-list{overflow-y:auto;display:flex;flex-direction:column;
+  scrollbar-width:thin;scrollbar-color:var(--border) transparent;
+  overscroll-behavior:contain}
+.sw-list::-webkit-scrollbar{width:4px}
+.sw-list::-webkit-scrollbar-track{background:transparent}
+.sw-list::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+.sw-list::-webkit-scrollbar-thumb:hover{background:var(--accent2)}
 .sw-item{display:flex;align-items:center;gap:11px;width:100%;background:none;border:0;
-  border-bottom:1px solid rgba(30,42,66,.6);padding:11px 2px;cursor:pointer;
-  font-family:inherit;color:#E8F0FF;text-align:left}
+  border-bottom:1px solid rgba(30,42,66,.6);padding:11px 8px;cursor:pointer;
+  font-family:inherit;color:#E8F0FF;text-align:left;border-radius:10px;
+  transition:background .12s}
 .sw-item:last-child{border-bottom:0}
-.sw-item:active{background:rgba(22,30,48,.7)}
+.sw-item:hover{background:rgba(22,30,48,.55)}
+.sw-item:active{background:rgba(22,30,48,.9)}
 .sw-item img,.sw-item .ic,.sw-item i{width:30px;height:30px;border-radius:50%;flex:none;display:block}
 .sw-item-s{flex:1;font-size:14px;font-weight:600;letter-spacing:.03em}
 .sw-item-r{display:flex;flex-direction:column;align-items:flex-end;gap:2px;min-width:0}

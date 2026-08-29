@@ -1,6 +1,6 @@
-import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=c183dc62';
-import { DEC, cacheGet, cacheGetStale, cacheSet, graph, graphReady, mapLimit, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=c183dc62';
-import { $, go } from './shell.js?v=c183dc62';
+import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=de1daa50';
+import { DEC, assetOf, cacheGet, cacheGetStale, cacheSet, graph, graphReady, mapLimit, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=de1daa50';
+import { $, go } from './shell.js?v=de1daa50';
 
 // keep=true means this contract is on the address's list, so it earns a row
 // even at zero. Only an unknown contract has to prove itself with a balance.
@@ -492,6 +492,15 @@ async function loadBalances(addr, force){
         if (b.denom === 'uluna') LUNC_RAW = Number(b.amount);
       } else if (b.denom.startsWith('ibc/')) {
         let sym = 'IBC', note = b.denom.slice(4, 12) + '\u2026';
+        // The market map names the denoms that actually trade, which is the set
+        // worth naming, and it is already loaded. The node is asked only for
+        // what the map has never heard of.
+        const mapped = assetOf('native:' + b.denom);
+        if (mapped && mapped.sym) {
+          found.push({ sym: mapped.sym, v: amt(b.amount, mapped.dec), note: 'IBC',
+                       denom: b.denom, dec: mapped.dec, logo: mapped.logo });
+          continue;
+        }
         // A hash resolves to the same trace forever, so the answer is worth
         // keeping; and where the node refuses to answer at all, that refusal
         // is worth keeping too. Both were being paid for on every open, in the
