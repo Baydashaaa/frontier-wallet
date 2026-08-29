@@ -1,6 +1,6 @@
-import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=8f674032';
-import { DEC, cacheGet, cacheGetStale, cacheSet, graph, mapLimit, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=8f674032';
-import { $, go } from './shell.js?v=8f674032';
+import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=9c79938d';
+import { DEC, cacheGet, cacheGetStale, cacheSet, graph, mapLimit, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=9c79938d';
+import { $, go } from './shell.js?v=9c79938d';
 
 // keep=true means this contract is on the address's list, so it earns a row
 // even at zero. Only an unknown contract has to prove itself with a balance.
@@ -127,6 +127,11 @@ let FORCE_SWEEP = false;
 let LAST_ADDR = null;
 // One pass at a time, and not more often than the chain produces blocks.
 let RUNNING = false, LOADED_AT = 0;
+// This node answers 501 to denom_traces: the endpoint is not built here, and
+// it will not be built by the next open either. That is a fact about the node,
+// worth learning once a session rather than rediscovering with two sequential
+// requests in front of every first paint.
+let IBC_TRACES = true;
 // What each token was worth the last time a sweep finished. A price that
 // blinks out to "no price" on every refresh reads as the token having lost its
 // market, which is a far bigger claim than "not asked yet".
@@ -183,17 +188,31 @@ function renderTokens(list, found, px, hint){
     return { t: t, fiat: fiat, sub: sub, shaky: shaky };
   });
 
+  // A native row carries no contract, so it fell out of this check entirely -
+  // and with it LUNC and USTC, whose price comes from the feed rather than
+  // from a pool. When the feed was slow or refused, the total declared itself
+  // final while missing the two largest holdings, then jumped when the feed
+  // came back. Other native denoms are excluded on purpose: an IBC balance has
+  // no price here and never will, so waiting on one would dim the total for
+  // good.
+  const waiting = rows.some(r => r.fiat === null &&
+    (r.t.contract ? !r.t.tried : CORE_SYMS.indexOf(r.t.sym) >= 0));
+  // Two different questions were being answered by one flag. SWEEPING means
+  // the list can still grow; `waiting` means the prices are still arriving.
+  // Either one makes this reading provisional, and only a reading that is not
+  // provisional may define, or retract, what a token is worth.
+  const settling = SWEEPING || waiting;
+
   rows.forEach(function (r) {
     const k = r.t.sym;
     if (r.fiat !== null) {
-      // only a finished sweep is allowed to define what a token is worth
-      if (!SWEEPING) PRICE_SEEN[k] = { fiat: r.fiat, sub: r.sub };
-    } else if (SWEEPING && PRICE_SEEN[k]) {
+      if (!settling) PRICE_SEEN[k] = { fiat: r.fiat, sub: r.sub };
+    } else if (settling && PRICE_SEEN[k]) {
       r.fiat = PRICE_SEEN[k].fiat;
       r.sub = PRICE_SEEN[k].sub;
       r.shaky = true;             // last known, not current - and it says so
-    } else if (!SWEEPING) {
-      // the sweep finished and found no price: the old one is now a fiction
+    } else if (!settling) {
+      // asked in full and no price came back: the old one is now a fiction
       delete PRICE_SEEN[k];
     }
   });
@@ -236,17 +255,8 @@ function renderTokens(list, found, px, hint){
   // not when the sweep happens to be idle. The balances arrive long before the
   // prices do, and calling that moment "complete" is what froze $2.34 over a
   // list worth two hundred.
-  // A native row carries no contract, so it fell out of this check entirely -
-  // and with it LUNC and USTC, whose price comes from the feed rather than
-  // from a pool. When the feed was slow or refused, the total declared itself
-  // final while missing the two largest holdings, then jumped when the feed
-  // came back. Other native denoms are excluded on purpose: an IBC balance has
-  // no price here and never will, so waiting on one would dim the total for
-  // good.
-  const waiting = rows.some(r => r.fiat === null &&
-    (r.t.contract ? !r.t.tried : CORE_SYMS.indexOf(r.t.sym) >= 0));
   const totalEl = $('#bal-total');
-  if (!waiting && !SWEEPING) {
+  if (!settling) {
     TOTAL_SHOWN = total;
     totalEl.textContent = usd(total);
     totalEl.classList.remove('stale');
@@ -332,12 +342,26 @@ async function loadBalances(addr, force){
         if (b.denom === 'uluna') LUNC_RAW = Number(b.amount);
       } else if (b.denom.startsWith('ibc/')) {
         let sym = 'IBC', note = b.denom.slice(4, 12) + '\u2026';
-        try {
-          const tr = await getJSON(LCD + '/ibc/apps/transfer/v1/denom_traces/' + b.denom.slice(4));
-          const base = tr.denom_trace.base_denom;
-          sym = (base.startsWith('u') ? base.slice(1) : base).toUpperCase();
-          note = tr.denom_trace.path;
-        } catch (e) {}
+        // A hash resolves to the same trace forever, so the answer is worth
+        // keeping; and where the node refuses to answer at all, that refusal
+        // is worth keeping too. Both were being paid for on every open, in the
+        // one place where the cost is visible - before anything is drawn.
+        const seen = cacheGetStale('ibc:' + b.denom);
+        if (seen && seen.sym) {
+          sym = seen.sym;
+          note = seen.note;
+        } else if (IBC_TRACES) {
+          try {
+            const tr = await getJSON(LCD + '/ibc/apps/transfer/v1/denom_traces/' + b.denom.slice(4));
+            const base = tr.denom_trace.base_denom;
+            sym = (base.startsWith('u') ? base.slice(1) : base).toUpperCase();
+            note = tr.denom_trace.path;
+            cacheSet('ibc:' + b.denom, { sym: sym, note: note });
+          } catch (e) {
+            // not "this denom is unknown" but "this node does not do this"
+            if (e && e.status === 501) IBC_TRACES = false;
+          }
+        }
         found.push({ sym: sym, v: amt(b.amount, 6), note: note, denom: b.denom, dec: 6 });
       } else {
         found.push({ sym: b.denom.toUpperCase(), v: amt(b.amount, 6), note: '', denom: b.denom, dec: 6 });
@@ -347,7 +371,13 @@ async function loadBalances(addr, force){
     // the seeded few first, so the screen is useful within a second
     // Balances are already in hand at this point - put them on screen before
     // anything that talks to a pool.
-    renderTokens(list, found, px, 'Reading your tokens.');
+    //
+    // On a refresh there is already a fuller list on screen than this, because
+    // `found` here is natives only: the CW20 rows are read below. Drawing it
+    // would blank every token for a second or two on a timer, which is what the
+    // 45 second poll was doing. A cold open has nothing better to show, so it
+    // still draws.
+    if (!LAST.found.length) renderTokens(list, found, px, 'Reading your tokens.');
 
     // The list, and nothing but the list. This is the whole of a normal open.
     // one request, and every logo and decimal below comes for free
@@ -387,7 +417,6 @@ async function loadBalances(addr, force){
     const skipSweep = !FORCE_SWEEP && Date.now() - sweptAt < SWEEP_EVERY;
     FORCE_SWEEP = false;
     if (!skipSweep) {
-      SWEEPING = true;
       renderTokens(list, found, px, 'Looking for tokens this address has not seen before.');
     }
     // The graph is a thousand reads. It is only built when something is
@@ -405,6 +434,10 @@ async function loadBalances(addr, force){
     });
     const hits = [];
     rest.forEach((c, i) => { if (Number(bals[i]) > 0) hits.push({ c: c, bal: bals[i] }); });
+    // Only now is the total actually incomplete: rows are about to join the
+    // list. A sweep that finds nothing - which is nearly every sweep - never
+    // makes the figure provisional at all.
+    if (hits.length) SWEEPING = true;
 
     const rows = await mapLimit(hits, 6, h => tokenRow(h.c, addr, h.bal));
     for (const r of rows) if (r) found.push(r);

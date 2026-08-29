@@ -1,4 +1,4 @@
-import { $ } from './shell.js?v=8f674032';
+import { $ } from './shell.js?v=9c79938d';
 
 /* ---------------- chain reads ---------------- */
 const LCD = 'https://terra-classic-lcd.publicnode.com';
@@ -89,6 +89,30 @@ function iconRemember(sym, val){
 }
 const localIcon = sym => 'assets/tokens/' + sym.toUpperCase().replace(/[^A-Z0-9]/g, '');
 
+// A logo url that 404s will 404 again on the next render, and there are
+// several renders per load - LTK's free image host dropped its file, so that
+// one was being requested six times an open and losing the icon to a letter
+// each time. Remembered per url rather than per symbol, so a token whose owner
+// later points marketing_info somewhere that works is unaffected. Hosts do
+// come back, so an entry is only believed for a week.
+const DEAD_KEY = 'fw:icons:dead';
+const DEAD_TTL = 7 * 24 * 3600 * 1000;
+let ICON_DEAD = {};
+try {
+  const raw = JSON.parse(localStorage.getItem(DEAD_KEY) || '{}') || {};
+  const now = Date.now();
+  for (const u in raw) if (now - raw[u] < DEAD_TTL) ICON_DEAD[u] = raw[u];
+} catch (e) {}
+let DEAD_T = null;
+function iconDead(url){
+  if (ICON_DEAD[url]) return;
+  ICON_DEAD[url] = Date.now();
+  clearTimeout(DEAD_T);
+  DEAD_T = setTimeout(function () {
+    try { localStorage.setItem(DEAD_KEY, JSON.stringify(ICON_DEAD)); } catch (e) {}
+  }, 500);
+}
+
 // Three chances per icon, in order: the contract's own logo, a local file
 // named after the ticker, the first letter. The letter is what renders first,
 // so a slow image never leaves an empty hole in the row.
@@ -96,7 +120,7 @@ function iconHTML(t){
   const sym = t.sym;
   const known = ICON_SEEN[sym];
   const cands = [];
-  if (t.logo) cands.push(t.logo);
+  if (t.logo && !ICON_DEAD[t.logo]) cands.push(t.logo);
   if (typeof known === 'string') {
     cands.push(known);                       // уже знаем, какой файл есть
   } else if (known !== 0) {
@@ -132,7 +156,13 @@ function paintIcons(root){
         // data url, and storing those would fill the quota with base64
         if (sym && cands[i].indexOf('assets/') === 0) iconRemember(sym, cands[i]);
       };
-      img.onerror = () => { i += 1; next(); };
+      img.onerror = () => {
+        // a local miss is already remembered per symbol below; this is for the
+        // remote urls, which nothing was remembering at all
+        const c = cands[i];
+        if (c.indexOf('assets/') !== 0 && c.indexOf('data:') !== 0) iconDead(c);
+        i += 1; next();
+      };
       img.src = cands[i];
     })();
   });
