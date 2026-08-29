@@ -1,4 +1,4 @@
-import { EXTRA_PAIRS, FACTORIES, LCD, amt, getJSON, smart } from './chain.js?v=6047363b';
+import { EXTRA_PAIRS, FACTORIES, LCD, amt, getJSON, smart } from './chain.js?v=8f674032';
 
 /* ---------------- discovery and pricing ----------------
    The chain has no "which CW20 does this address hold" endpoint. Balances live
@@ -412,7 +412,15 @@ async function directPairs(token){
     // One try. A factory that does not hold this pair answers 500 rather than
     // 400, and the retry logic reads that as "later" - so a question with one
     // permanent answer was being asked three times.
-    try { r = await smart(f.a, q, 1); } catch (e) { return; }
+    //
+    // That 500 is an ANSWER, and treating it as silence is what stopped the
+    // negative below from ever being written: a token with no pool anywhere
+    // left every factory "unheard", so nothing was cached and all five were
+    // asked again on the next open, forever. Only a request that got no HTTP
+    // reply at all - timeout, network, or a 429 meaning "later" - counts as
+    // unheard now.
+    try { r = await smart(f.a, q, 1); }
+    catch (e) { if (e && e.status && e.status !== 429) asked += 1; return; }
     asked += 1;
     const d = (r && r.data) || {};
     const addr = d.contract_addr || d.contract || d.pair;

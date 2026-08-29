@@ -1,6 +1,6 @@
-import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=6047363b';
-import { DEC, cacheGet, cacheGetStale, cacheSet, graph, mapLimit, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=6047363b';
-import { $, go } from './shell.js?v=6047363b';
+import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=8f674032';
+import { DEC, cacheGet, cacheGetStale, cacheSet, graph, mapLimit, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=8f674032';
+import { $, go } from './shell.js?v=8f674032';
 
 // keep=true means this contract is on the address's list, so it earns a row
 // even at zero. Only an unknown contract has to prove itself with a balance.
@@ -75,17 +75,27 @@ function forget(addr, contract){
 let PRICING = 0;
 async function priceRows(list, found, px){
   const mine = ++PRICING;
-  const todo = found.filter(r => r.contract && !r.pool && !px[r.sym]);
+  // Three things disqualify a row, not one. `tried` means it was asked and the
+  // market had no answer; asking again in the same load produces the same
+  // silence. `asking` means an earlier pass is in flight on it right now -
+  // without that flag the sweep's pass re-requested every token the opening
+  // pass had not finished paying for yet.
+  const todo = found.filter(r => r.contract && !r.pool && !r.tried && !r.asking && !px[r.sym]);
   if (!todo.length) return;
+  todo.forEach(r => { r.asking = true; });
 
   // What can be answered from a direct pool or a bonding curve, which is most
   // of any wallet. Drawn as soon as it is in, so the screen fills instead of
   // waiting on whichever token is slowest.
   const quick = await mapLimit(todo, 10, r => poolPrice(r.contract, true).catch(() => null));
-  if (mine !== PRICING) return;   // a newer pass has started, this one is stale
+  // Recorded BEFORE the staleness check. An answer belongs to the row, not to
+  // the pass that fetched it; discarding it because a newer pass had started
+  // meant the newer pass repeated every request the first one had just paid
+  // for. Only the drawing is stale, not the data.
   // tried, whatever the answer. Without this a row with no price is
   // indistinguishable from a row whose price has not been asked for yet.
-  todo.forEach((r, i) => { r.pool = quick[i] || null; r.tried = true; });
+  todo.forEach((r, i) => { if (quick[i]) r.pool = quick[i]; r.tried = true; r.asking = false; });
+  if (mine !== PRICING) return;   // a newer pass owns the screen
   renderTokens(list, found, px, LAST.hint);
 
   // The rest need a route through other pools, so they need the graph. If it
@@ -94,8 +104,8 @@ async function priceRows(list, found, px){
   const rest = todo.filter(r => !r.pool);
   if (!rest.length) return;
   const slow = await mapLimit(rest, 4, r => poolPrice(r.contract).catch(() => null));
+  rest.forEach((r, i) => { if (slow[i]) r.pool = slow[i]; r.tried = true; r.asking = false; });
   if (mine !== PRICING) return;
-  rest.forEach((r, i) => { r.pool = slow[i] || null; r.tried = true; });
   renderTokens(list, found, px, LAST.hint);
 }
 
@@ -226,7 +236,15 @@ function renderTokens(list, found, px, hint){
   // not when the sweep happens to be idle. The balances arrive long before the
   // prices do, and calling that moment "complete" is what froze $2.34 over a
   // list worth two hundred.
-  const waiting = rows.some(r => r.fiat === null && r.t.contract && !r.t.tried);
+  // A native row carries no contract, so it fell out of this check entirely -
+  // and with it LUNC and USTC, whose price comes from the feed rather than
+  // from a pool. When the feed was slow or refused, the total declared itself
+  // final while missing the two largest holdings, then jumped when the feed
+  // came back. Other native denoms are excluded on purpose: an IBC balance has
+  // no price here and never will, so waiting on one would dim the total for
+  // good.
+  const waiting = rows.some(r => r.fiat === null &&
+    (r.t.contract ? !r.t.tried : CORE_SYMS.indexOf(r.t.sym) >= 0));
   const totalEl = $('#bal-total');
   if (!waiting && !SWEEPING) {
     TOTAL_SHOWN = total;
@@ -283,10 +301,23 @@ async function loadBalances(addr, force){
   } catch (e) { /* a bad snapshot is not worth failing the open over */ }
 
   try {
-    const [bank, px] = await Promise.all([
-      getJSON(LCD + '/cosmos/bank/v1beta1/balances/' + addr),
-      prices()
-    ]);
+    // The feed used to be awaited alongside the balances, so nothing at all
+    // was drawn until CoinGecko answered - and from a phone it answers 429
+    // often enough that three paced retries put twenty seconds of blank screen
+    // in front of a wallet whose balances were already in hand. It runs on its
+    // own now, seeded from the last figures it gave us, and the screen is
+    // redrawn if and when it lands.
+    const bank = await getJSON(LCD + '/cosmos/bank/v1beta1/balances/' + addr);
+    const px = Object.assign({}, cacheGetStale('px') || {});
+    prices().then(function (fresh) {
+      if (!fresh || (!fresh.LUNC && !fresh.USTC)) return;
+      cacheSet('px', fresh);
+      Object.assign(px, fresh);
+      if (LAST_ADDR !== addr || !LAST.found.length) return;
+      // whichever pass owns the screen now, not necessarily this one
+      Object.assign(LAST.px, fresh);
+      renderTokens(list, LAST.found, LAST.px, LAST.hint);
+    }).catch(function () {});
 
     const found = [];
 
@@ -334,7 +365,9 @@ async function loadBalances(addr, force){
     // total is honest even though prices are still arriving.
     SWEEPING = false;
     renderTokens(list, found, px, '');
-    priceRows(list, found, px);   // deliberately not awaited
+    // Not awaited here - the sweep below must not wait on prices. Kept, though,
+    // because the snapshot at the end must.
+    const opening = priceRows(list, found, px).catch(() => null);
 
     // then everything that trades anywhere, which is the part nobody should
     // have to maintain by hand
@@ -386,6 +419,7 @@ async function loadBalances(addr, force){
     // next to forgetting one you still own.
     // anything the sweep turned up joins the list for good
     remember(addr, found.map(r => r.contract).concat(hits.map(h => h.c)));
+    await opening;
     await priceRows(list, found, px);
     // everything that could be found has been found and priced; from here the
     // total is the whole wallet

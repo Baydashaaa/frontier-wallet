@@ -1,4 +1,4 @@
-import { $ } from './shell.js?v=6047363b';
+import { $ } from './shell.js?v=8f674032';
 
 /* ---------------- chain reads ---------------- */
 const LCD = 'https://terra-classic-lcd.publicnode.com';
@@ -186,6 +186,8 @@ async function getJSON(url, ms = 12000, tries = 3){
       finally { release(); }
       if (!r.ok) {
         const err = new Error(url.split('/').pop() + ' -> ' + r.status);
+        // callers that need to tell a refusal from a silence read this
+        err.status = r.status;
         // 4xx is the node answering. A smart query for a pair that does not
         // exist comes back 400, and asking twice more does not conjure it up.
         // 429 is the exception: that one means "later", not "no".
@@ -211,7 +213,7 @@ const usd = v => '$' + v.toLocaleString('en-US', { minimumFractionDigits:2, maxi
 
 async function prices(){
   try {
-    const d = await getJSON('https://api.coingecko.com/api/v3/simple/price?ids=terra-luna,terrausd&vs_currencies=usd', 8000);
+    const d = await getJSON('https://api.coingecko.com/api/v3/simple/price?ids=terra-luna,terrausd&vs_currencies=usd', 8000, 2);
     return { LUNC: d['terra-luna'] && d['terra-luna'].usd, USTC: d['terrausd'] && d['terrausd'].usd };
   } catch (e) { return {}; }
 }
