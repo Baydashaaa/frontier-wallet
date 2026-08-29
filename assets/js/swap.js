@@ -4,12 +4,12 @@
 // пул сам умеет ответить, сколько отдаст за конкретную сумму, с учётом
 // проскальзывания и комиссии. Считать это самому - значит показать одно
 // число, а получить другое.
-import { amt, fmt, iconHTML, paintIcons, smart } from './chain.js?v=0448b7df';
-import { $, go, tap } from './shell.js?v=0448b7df';
-import { directPairs } from './market.js?v=0448b7df';
-import { heldTokens, refreshBalances } from './tokens.js?v=0448b7df';
-import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=0448b7df';
-import { S } from './state.js?v=0448b7df';
+import { amt, fmt, iconHTML, paintIcons, usd } from './chain.js?v=c183dc62';
+import { $, go, tap } from './shell.js?v=c183dc62';
+import { assetOf, directPeers, gdInfo, poolsBetween, reserves, simulateSwap } from './market.js?v=c183dc62';
+import { fiatOf, heldTokens, refreshBalances } from './tokens.js?v=c183dc62';
+import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=c183dc62';
+import { S } from './state.js?v=c183dc62';
 
 const LUNC = { sym: 'LUNC', denom: 'uluna', dec: 6, native: true };
 let FROM = LUNC, TO = null, TIMER = null, SEQ = 0;
@@ -23,33 +23,29 @@ function armGo(text, on){
   b.textContent = text; b.disabled = !on;
 }
 
-// Стороны сделки описываются по-разному: нативный деном против адреса
-// контракта. Пул ждёт именно ту форму, что соответствует активу.
-const assetInfo = t => t.denom
-  ? { native_token: { denom: t.denom } }
-  : { token: { contract_addr: t.contract } };
+// How an asset is named everywhere below: the same key the market map uses, so
+// a row from the wallet and an asset from the map are the same thing.
+const keyOf = t => !t ? '' : (t.contract ? 'cw20:' + t.contract : 'native:' + t.denom);
 
-// Пара, через которую идёт обмен. Маршрут уже посчитан при оценке цены,
-// последний участок и есть пул против LUNC.
-function pairOf(t){
-  const r = t && t.pool && t.pool.route;
-  if (!Array.isArray(r) || !r.length) return null;
-  const last = r[r.length - 1];
-  return last && last.pair ? last.pair : null;
+// A wallet row if there is one - it carries the balance and the icon the list
+// already resolved - otherwise a row built from the map, holding nothing. The
+// second kind is the point: you cannot buy a token you do not have if the
+// picker only offers tokens you have.
+function tokenFor(key){
+  const held = heldTokens().find(r => keyOf(r) === key);
+  if (held) return held;
+  const a = assetOf(key);
+  if (!a) return null;
+  const base = { sym: a.sym, dec: a.dec, logo: a.logo, v: 0 };
+  if (key.slice(0, 5) === 'cw20:') base.contract = key.slice(5);
+  else base.denom = key.slice(7);
+  return base;
 }
-const swappable = t =>
-  !!t && !!t.contract && !!t.pool && !t.pool.bond && !!pairOf(t) && t.pool.hops === 1;
 
-// The same pair is listed by more than one factory, with different depth and
-// different fees. Which one is best is a question about this amount, not about
-// the pools in general, so every candidate is asked and the answers compared.
-async function candidates(token, fallback){
-  try {
-    const list = await directPairs(token.contract);
-    if (Array.isArray(list) && list.length) return list;
-  } catch (e) {}
-  return [fallback];
-}
+// Tradeable means the map knows a pool holding it. Not "has a route to LUNC",
+// which is what this used to mean and why a token with three healthy pools of
+// its own counted as unswappable.
+const swappable = t => !!t && directPeers(keyOf(t)).length > 0;
 
 function decOf(t){
   const d = Number(t && t.dec);
@@ -80,12 +76,29 @@ function face(el, t){
 // the reserve it is pushing into, so a trade worth one percent of that reserve
 // costs about one percent. That number can be named before anything is typed,
 // which is the only moment a warning is still useful.
+//
+// It used to be derived from the token's LUNC depth, which only exists for a
+// pair against LUNC. Read from the pool itself it holds for any pair, and it is
+// one query per pool, kept for as long as the screen is open.
+const DEPTH = {};
 function comfortOf(){
-  const token = FROM.sym === 'LUNC' ? TO : FROM;
-  if (!token || !token.pool || !token.pool.depth) return 0;
-  const lunc = token.pool.depth;
-  const reserve = FROM.denom ? lunc : lunc / (token.pool.inLunc || 1);
-  return reserve > 0 ? reserve * 0.01 : 0;
+  const pools = poolsBetween(keyOf(FROM), keyOf(TO));
+  if (!pools.length) return 0;
+  const d = DEPTH[pools[0].pair];
+  return d && d > 0 ? d * 0.01 : 0;
+}
+
+async function learnDepth(){
+  const pools = poolsBetween(keyOf(FROM), keyOf(TO));
+  if (!pools.length || DEPTH[pools[0].pair] !== undefined) return;
+  const pair = pools[0].pair;
+  DEPTH[pair] = 0;                       // asked, so the next paint does not re-ask
+  const res = await reserves(pair).catch(() => null);
+  if (!res) return;
+  const mine = res.find(x => x.key === keyOf(FROM));
+  if (!mine) return;
+  DEPTH[pair] = amt(mine.raw, decOf(FROM));
+  paintZones();
 }
 
 function paintZones(){
@@ -108,25 +121,47 @@ function paintZones(){
 }
 
 function fillPickers(){
-  const rows = heldTokens().filter(swappable);
-  if (!TO && rows.length) TO = rows[0];
+  const peers = directPeers(keyOf(FROM));
+  // Both sides starting as LUNC is not a trade, and the old default did exactly
+  // that whenever the wallet held nothing else priced against it.
+  if ((!TO || keyOf(TO) === keyOf(FROM)) && peers.length) TO = tokenFor(peers[0].key);
   face($('#sw-from'), FROM);
   face($('#sw-to'), TO || LUNC);
-  $('#sw-net').textContent = rows.length ? rows.length + ' pairs' : 'no direct pairs held';
+  $('#sw-net').textContent = peers.length
+    ? peers.length + ' pairs with ' + FROM.sym
+    : 'nothing pairs with ' + FROM.sym;
   const bal = balOf(FROM);
   $('#sw-avail').textContent = bal ? fmt(bal) + ' available' : '';
   paintZones();
+  learnDepth();
+}
+
+// The pay side is what you hold and can actually sell. The receive side is
+// whatever shares a pool with it - held or not, because otherwise this screen
+// can only shuffle what is already in the wallet.
+function sheetRows(side){
+  if (side === 'from') {
+    const mine = heldTokens().filter(t => (t.v || 0) > 0 && swappable(t));
+    const lunc = pick('LUNC');
+    if (lunc && !mine.some(t => t.sym === 'LUNC')) mine.unshift(lunc);
+    return mine;
+  }
+  return directPeers(keyOf(FROM)).map(p => tokenFor(p.key)).filter(Boolean);
 }
 
 function openSheet(side){
-  const lunc = pick('LUNC') || LUNC;
-  const all = [lunc].concat(heldTokens().filter(swappable));
-  $('#sw-list').innerHTML = all.map(function (t) {
-    return '<button class="sw-item" type="button" data-sym="' + t.sym + '">' +
+  const all = sheetRows(side);
+  const list = $('#sw-list');
+  list.innerHTML = all.length ? all.map(function (t) {
+    const f = fiatOf(t);
+    return '<button class="sw-item" type="button" data-k="' + keyOf(t) + '">' +
       iconHTML(t) + '<span class="sw-item-s">' + t.sym + '</span>' +
-      '<span class="sw-item-v">' + fmt(t.v || 0) + '</span></button>';
-  }).join('');
-  paintIcons($('#sw-list'));
+      '<span class="sw-item-r">' +
+        '<span class="sw-item-v">' + ((t.v || 0) > 0 ? fmt(t.v) : '') + '</span>' +
+        '<span class="sw-item-u">' + (f !== null && f > 0 ? usd(f) : '') + '</span>' +
+      '</span></button>';
+  }).join('') : '<div class="sw-none">Nothing here shares a pool with ' + FROM.sym + '.</div>';
+  paintIcons(list);
   const sheet = $('#sw-sheet');
   sheet.dataset.side = side;
   sheet.hidden = false;
@@ -163,17 +198,18 @@ async function quote(){
   const v = parseFloat(String($('#sw-amt').value).replace(',', '.'));
   const out = $('#sw-out');
 
-  // одна сторона обязана быть LUNC: пул торгует токен против LUNC, и
-  // токен-в-токен это две сделки, а не одна
-  const token = FROM.sym === 'LUNC' ? TO : FROM;
-  if (!token || (FROM.sym !== 'LUNC' && (!TO || TO.sym !== 'LUNC'))) {
+  // One pool, both sides. LUNC used to be required on one of them because the
+  // route came from the token list, which only ever prices against LUNC - but
+  // a pool holding JURIS and TERRA trades them in one message like any other.
+  if (!TO || keyOf(TO) === keyOf(FROM)) {
     out.textContent = '-'; out.classList.add('dim');
-    detail([{ k: 'Route', v: 'token to token needs two swaps', tone: 'warn' }]);
+    detail([{ k: 'Route', v: 'pick two different assets', tone: 'warn' }]);
     return;
   }
-  let pair = pairOf(token);
-  if (!pair) { out.textContent = '-'; out.classList.add('dim');
-    detail([{ k: 'Route', v: 'no direct pool', tone: 'bad' }]); return; }
+  const pools = poolsBetween(keyOf(FROM), keyOf(TO));
+  if (!pools.length) { out.textContent = '-'; out.classList.add('dim');
+    detail([{ k: 'Route', v: 'no pool holds both', tone: 'bad' }]); return; }
+  let pair = pools[0].pair;
   if (!isFinite(v) || v <= 0) { out.textContent = '-'; out.classList.add('dim'); detail([]); return; }
 
   out.textContent = 'quoting'; out.classList.add('dim');
@@ -181,10 +217,9 @@ async function quote(){
   const raw = toRaw($('#sw-amt').value, dFrom);
 
   try {
-    const pairs = await candidates(token, pair);
-    const quotes = (await Promise.all(pairs.map(function (p) {
-      return smart(p, { simulation: { offer_asset: { info: assetInfo(FROM), amount: raw } } })
-        .then(function (x) { return { pair: p, d: (x && x.data) || {} }; })
+    const quotes = (await Promise.all(pools.map(function (p) {
+      return simulateSwap(p.pair, keyOf(FROM), raw, p.dex)
+        .then(function (x) { return { pair: p.pair, dialect: x.dialect, d: x }; })
         // a pool that will not answer is not an error, it is one fewer option
         .catch(function () { return null; });
     }))).filter(function (q) { return q && Number(q.d.return_amount) > 0; });
@@ -192,6 +227,7 @@ async function quote(){
     if (!quotes.length) throw new Error('no pool would quote this amount');
     quotes.sort(function (a, b) { return Number(b.d.return_amount) - Number(a.d.return_amount); });
     pair = quotes[0].pair;
+    const dialect = quotes[0].dialect;
     const d = quotes[0].d;
     // What the second best would have given - the whole point of asking more
     // than one pool. But only pools that could actually have taken the trade
@@ -210,7 +246,7 @@ async function quote(){
 
     out.textContent = fmt(got);
     out.classList.remove('dim');
-    QUOTE = { pair: pair, offerRaw: raw, returnRaw: String(d.return_amount),
+    QUOTE = { pair: pair, dialect: dialect, offerRaw: raw, returnRaw: String(d.return_amount),
               got: got, dTo: dTo, pct: pct };
     // an expensive trade should not be one tap away from an ordinary one
     armGo(!S.MNEMONIC ? 'Watch only, nothing can be signed'
@@ -224,9 +260,9 @@ async function quote(){
       { k: 'Slippage costs you', v: fmt(spread) + ' ' + TO.sym,
         tone: pct >= 5 ? 'bad' : pct >= 1 ? 'warn' : '' },
       { k: 'Pool fee', v: fmt(fee) + ' ' + TO.sym },
-      { k: 'Pool depth', v: fmt(token.pool.depth) + ' LUNC',
-        tone: token.pool.depth < 5e6 ? 'warn' : '' },
-      { k: 'Pools asked', v: quotes.length + ' of ' + pairs.length +
+      { k: 'Pool depth', v: DEPTH[pair] ? fmt(DEPTH[pair]) + ' ' + FROM.sym : 'reading',
+        tone: DEPTH[pair] && DEPTH[pair] < v * 20 ? 'warn' : '' },
+      { k: 'Pools asked', v: quotes.length + ' of ' + pools.length +
         (edge === null
           ? (quotes.length > 1 ? ', the rest too thin to matter' : '')
           : edge > 0.01 ? ', best by ' + edge.toFixed(2) + '%' : '') }
@@ -249,11 +285,19 @@ $('#sw-sheet').addEventListener('click', e => { if (e.target.id === 'sw-sheet') 
 $('#sw-list').addEventListener('click', e => {
   const item = e.target.closest('.sw-item');
   if (!item) return;
-  const t = pick(item.dataset.sym);
+  const t = tokenFor(item.dataset.k);
   const side = $('#sw-sheet').dataset.side;
   // both sides the same asset is not a trade
-  if (side === 'from') { if (TO && t && TO.sym === t.sym) TO = FROM; FROM = t || LUNC; }
-  else { if (t && FROM.sym === t.sym) FROM = TO || LUNC; TO = t; }
+  if (side === 'from') {
+    // changing what you pay with changes what you can receive, so a receive
+    // side that no longer pairs with it is dropped rather than left dangling
+    if (TO && t && keyOf(TO) === keyOf(t)) TO = FROM;
+    FROM = t || LUNC;
+    if (TO && !poolsBetween(keyOf(FROM), keyOf(TO)).length) TO = null;
+  } else {
+    if (t && keyOf(FROM) === keyOf(t)) FROM = TO || LUNC;
+    TO = t;
+  }
   closeSheet(); tap(); fillPickers();
   $('#sw-amt').value = ''; $('#sw-range').value = '0';
   $('#sw-out').textContent = '-'; detail([]);
@@ -274,26 +318,41 @@ $('#sw-flip').addEventListener('click', () => {
 const btn = document.getElementById('act-swap');
 if (btn) btn.addEventListener('click', () => { fillPickers(); go('swap'); });
 
-// Two ways to hand a pool an offer. A native coin rides along as funds; a CW20
-// cannot, so the token contract is asked to send itself with the swap as a
-// hook. Same trade, different envelope.
+// Two ways to hand a pool an offer, times two dialects.
+//
+// A native coin rides along as funds; a CW20 cannot, so the token contract is
+// asked to send itself with the swap as a hook. That part is the same either
+// way. What differs is the guard: TerraSwap is told the price it should expect
+// and how far it may drift, while Garuda is told the smallest number of tokens
+// that may come back. The second is the stricter promise, and the one the pool
+// itself enforces rather than recomputes.
 function envelope(){
-  const belief = (Number(QUOTE.offerRaw) / Number(QUOTE.returnRaw)).toFixed(18);
-  const guard = { belief_price: belief, max_spread: String(SLIP) };
+  const gd = QUOTE.dialect === 'gd';
+  // a floor, so rounding never pushes the guard above what was quoted
+  const floor = String(Math.floor(Number(QUOTE.returnRaw) * (1 - SLIP)));
+  const guard = gd
+    ? { offer_amount: QUOTE.offerRaw, min_receive: floor, deadline: Date.now() + 120000 }
+    : { belief_price: (Number(QUOTE.offerRaw) / Number(QUOTE.returnRaw)).toFixed(18),
+        max_spread: String(SLIP) };
+
   if (FROM.denom) {
+    const offer = gd
+      ? { offer_asset: gdInfo(keyOf(FROM)) }
+      : { offer_asset: { info: { native_token: { denom: FROM.denom } }, amount: QUOTE.offerRaw } };
     return {
       contract: QUOTE.pair,
       funds: [{ denom: FROM.denom, amount: QUOTE.offerRaw }],
-      msg: { swap: Object.assign({
-        offer_asset: { info: { native_token: { denom: FROM.denom } }, amount: QUOTE.offerRaw }
-      }, guard) }
+      msg: { swap: Object.assign({}, offer, guard) }
     };
   }
+  const hook = gd
+    ? { swap: Object.assign({ offer_asset: gdInfo(keyOf(FROM)) }, guard) }
+    : { swap: guard };
   return {
     contract: FROM.contract,
     funds: [],
     msg: { send: { contract: QUOTE.pair, amount: QUOTE.offerRaw,
-                   msg: btoa(JSON.stringify({ swap: guard })) } }
+                   msg: btoa(JSON.stringify(hook)) } }
   };
 }
 

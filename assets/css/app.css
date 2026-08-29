@@ -438,7 +438,11 @@ textarea{resize:none;min-height:110px;line-height:1.8}
 .sw-item:active{background:rgba(22,30,48,.7)}
 .sw-item img,.sw-item .ic,.sw-item i{width:30px;height:30px;border-radius:50%;flex:none;display:block}
 .sw-item-s{flex:1;font-size:14px;font-weight:600;letter-spacing:.03em}
+.sw-item-r{display:flex;flex-direction:column;align-items:flex-end;gap:2px;min-width:0}
 .sw-item-v{font-family:'Rajdhani',sans-serif;font-size:13px;color:var(--muted)}
+.sw-item-u{font-family:'Rajdhani',sans-serif;font-size:12px;color:#00FFB0}
+.sw-item-u:empty,.sw-item-v:empty{display:none}
+.sw-none{padding:18px 4px;font-size:13px;line-height:1.5;color:var(--muted);text-align:center}
 
 /* ══ patch55: кнопки обмена внизу экрана ══
    Поля читаются сверху вниз, а действие ждёт там, где его ищет большой палец.

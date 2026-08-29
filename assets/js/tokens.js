@@ -1,6 +1,6 @@
-import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=0448b7df';
-import { DEC, cacheGet, cacheGetStale, cacheSet, graph, graphReady, mapLimit, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=0448b7df';
-import { $, go } from './shell.js?v=0448b7df';
+import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=c183dc62';
+import { DEC, cacheGet, cacheGetStale, cacheSet, graph, graphReady, mapLimit, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=c183dc62';
+import { $, go } from './shell.js?v=c183dc62';
 
 // keep=true means this contract is on the address's list, so it earns a row
 // even at zero. Only an unknown contract has to prove itself with a balance.
@@ -128,6 +128,15 @@ async function priceRows(list, found, px){
   rest.forEach((r, i) => { if (slow[i]) r.pool = slow[i]; r.tried = true; r.asking = false; r.deferred = false; });
   if (mine !== PRICING) return;
   renderTokens(list, found, px, LAST.hint);
+}
+
+// What a row is worth, or null. Same inputs, same arithmetic as the list.
+function fiatOf(t){
+  const px = (LAST && LAST.px) || {};
+  if (!t) return null;
+  if (px[t.sym]) return (t.v || 0) * px[t.sym];
+  if (t.pool && px.LUNC) return (t.v || 0) * t.pool.inLunc * px.LUNC;
+  return null;
 }
 
 const HOME_NOTE = 'LUNC and USTC use a price feed. Everything else is priced from pools on chain, ' +
@@ -693,7 +702,7 @@ function openWallet(addr){
 // The swap screen needs the same rows the list is drawn from, priced and all.
 // Handing back LAST.found beats asking the chain a second time.
 const heldTokens = () => LAST.found || [];
-export { forget, registry, remember, heldTokens, luncRaw, openWallet, refreshBalances };
+export { fiatOf, forget, registry, remember, heldTokens, luncRaw, openWallet, refreshBalances };
 
 // A sweep is two hundred requests. It is worth doing on demand and worth not
 // doing otherwise, so it gets a button that says what it is doing.

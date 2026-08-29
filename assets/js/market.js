@@ -1,4 +1,4 @@
-import { EXTRA_PAIRS, FACTORIES, LCD, amt, getJSON, smart } from './chain.js?v=0448b7df';
+import { EXTRA_PAIRS, FACTORIES, LCD, amt, getJSON, smart } from './chain.js?v=c183dc62';
 
 /* ---------------- discovery and pricing ----------------
    The chain has no "which CW20 does this address hold" endpoint. Balances live
@@ -12,6 +12,82 @@ import { EXTRA_PAIRS, FACTORIES, LCD, amt, getJSON, smart } from './chain.js?v=0
 const LUNC_KEY = 'native:uluna';
 // TerraSwap says {token:{contract_addr}} / {native_token:{denom}},
 // Garuda says {cw20:"terra1..."} / {native:"uluna"}. Both mean the same asset.
+// What the map knows about an asset by itself, with no pool attached: enough
+// to draw a row for something this wallet has never held, which is the whole
+// point of being able to buy it.
+function assetOf(key){
+  if (!OW || !OW.syms) return null;
+  if (!OW.syms[key] && OW.decs[key] === undefined) return null;
+  return {
+    key: key,
+    sym: OW.syms[key] || key.slice(key.indexOf(':') + 1, key.indexOf(':') + 7),
+    dec: OW.decs[key] === undefined ? 6 : OW.decs[key],
+    logo: OW.logos[key] || null
+  };
+}
+
+// Everything that shares a pool with this asset, deepest pool first. One entry
+// per counterparty: several exchanges list the same pair, and the picker is
+// naming assets, not pools.
+function directPeers(key){
+  if (!OW || !OW.edges) return [];
+  const best = {};
+  for (const e of (OW.edges[key] || [])) {
+    if (e.to === key) continue;                 // a pool against itself is noise
+    if (!best[e.to] || e.liq > best[e.to].liq) best[e.to] = e;
+  }
+  const out = [];
+  for (const k in best) {
+    const a = assetOf(k);
+    if (a) out.push(Object.assign({}, a, { pair: best[k].pair, liq: best[k].liq, dex: best[k].dex }));
+  }
+  return out.sort((x, y) => y.liq - x.liq);
+}
+
+// Every pool holding exactly these two, deepest first. This is the candidate
+// list a quote is taken from: which one is best depends on the amount, so all
+// of them get asked.
+function poolsBetween(a, b){
+  if (!OW || !OW.edges) return [];
+  return (OW.edges[a] || []).filter(e => e.to === b)
+    .sort((x, y) => y.liq - x.liq)
+    .map(e => ({ pair: e.pair, dex: e.dex, liq: e.liq }));
+}
+
+// Two dialects, one question. TerraSwap asks `simulation` and wraps the side
+// in `info`; Garuda asks `simulate_swap`, names the side directly, and puts the
+// amount beside it rather than inside. Both answer with the same three fields,
+// so only the question differs.
+const tsInfo = key => key.slice(0, 5) === 'cw20:'
+  ? { token: { contract_addr: key.slice(5) } }
+  : { native_token: { denom: key.slice(7) } };
+const gdInfo = key => key.slice(0, 5) === 'cw20:'
+  ? { cw20: key.slice(5) }
+  : { native: key.slice(7) };
+
+const simMsg = (d, key, raw) => d === 'gd'
+  ? { simulate_swap: { offer_asset: gdInfo(key), offer_amount: raw } }
+  : { simulation: { offer_asset: { info: tsInfo(key), amount: raw } } };
+
+// A pool's code does not change, so which dialect it answers to is worth
+// learning once and keeping. The map's dex name is only the first guess; the
+// pool itself is the authority.
+async function simulateSwap(pair, offerKey, raw, guess){
+  const known = cacheGetStale('dex:' + pair);
+  const order = (known || guess) === 'gd' ? ['gd', 'ts'] : ['ts', 'gd'];
+  let last = null;
+  for (const d of order) {
+    try {
+      const r = await smart(pair, simMsg(d, offerKey, raw), 1);
+      const x = (r && r.data) || {};
+      if (x.return_amount === undefined) throw new Error('pool gave no return_amount');
+      if (known !== d) cacheSet('dex:' + pair, d);
+      return Object.assign({ dialect: d }, x);
+    } catch (e) { last = e; }
+  }
+  throw last || new Error('no dialect answered');
+}
+
 function infoKey(i){
   if (!i) return '?';
   if (i.token) return 'cw20:' + i.token.contract_addr;
@@ -139,20 +215,26 @@ async function owMarket(){
   }
   if (!raw) { OW = false; return false; }   // false, not null: asked and failed
 
-  const edges = {}, tokens = [], seen = {}, logos = {}, decs = {};
+  const edges = {}, tokens = [], seen = {}, logos = {}, decs = {}, syms = {};
   for (const p of raw) {
     if (!p.base || !p.quote || !p.pool) continue;
     const a = owKey(p.base), b = owKey(p.quote);
-    (edges[a] = edges[a] || []).push({ to: b, pair: p.pool });
-    (edges[b] = edges[b] || []).push({ to: a, pair: p.pool });
+    // Depth travels with the edge so a pair listed by four exchanges can be
+    // ordered without asking any of them, and the dex name travels with it
+    // because it is the first guess at which dialect the pool speaks.
+    const liq = Number(p.liquidity) || 0;
+    const dex = /garuda/i.test(String(p.dex || '')) ? 'gd' : 'ts';
+    (edges[a] = edges[a] || []).push({ to: b, pair: p.pool, liq: liq, dex: dex });
+    (edges[b] = edges[b] || []).push({ to: a, pair: p.pool, liq: liq, dex: dex });
     for (const t of [p.base, p.quote]) {
       const k = owKey(t);
       if (t.logo && !logos[k]) logos[k] = t.logo;
+      if (t.symbol && !syms[k]) syms[k] = t.symbol;
       if (t.decimals !== undefined && t.decimals !== null) decs[k] = t.decimals;
       if (k.slice(0, 5) === 'cw20:' && !seen[k]) { seen[k] = 1; tokens.push(k.slice(5)); }
     }
   }
-  OW = { edges: edges, tokens: tokens, logos: logos, decs: decs, count: raw.length };
+  OW = { edges: edges, tokens: tokens, logos: logos, decs: decs, syms: syms, count: raw.length };
   // decimals from the map save a token_info call each
   for (const k in decs) if (DEC[k] === undefined) DEC[k] = decs[k];
   return OW;
@@ -494,4 +576,4 @@ async function poolPrice(token, quick){
   return await bondPrice(token).catch(() => null);
 }
 
-export { DEC, cacheGet, cacheGetStale, cacheSet, directPairs, graph, graphReady, mapLimit, marketComplete, owLogo, owMarket, poolPrice, txCandidates };
+export { DEC, assetOf, cacheGet, cacheGetStale, cacheSet, directPairs, directPeers, gdInfo, graph, graphReady, mapLimit, marketComplete, owLogo, owMarket, poolPrice, poolsBetween, reserves, simulateSwap, tsInfo, txCandidates };

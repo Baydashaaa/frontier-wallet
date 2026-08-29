@@ -5,10 +5,10 @@
 // Значит коллекции можно не знать заранее, а узнавать: собрать контракты, с
 // которыми адрес когда-либо имел дело, и спросить каждого. Чужая коллекция
 // найдётся так же, как своя.
-import { LCD, getJSON, smart } from './chain.js?v=0448b7df';
-import { $ } from './shell.js?v=0448b7df';
-import { cacheGet, cacheSet, mapLimit, txCandidates } from './market.js?v=0448b7df';
-import { S } from './state.js?v=0448b7df';
+import { LCD, getJSON, smart } from './chain.js?v=c183dc62';
+import { $ } from './shell.js?v=c183dc62';
+import { cacheGet, cacheSet, mapLimit, txCandidates } from './market.js?v=c183dc62';
+import { S } from './state.js?v=c183dc62';
 
 const SHOW_MAX = 24;          // сколько картинок тянуть за один заход
 let LOADED = '';
