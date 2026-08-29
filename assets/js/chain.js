@@ -1,4 +1,4 @@
-import { $ } from './shell.js?v=9c79938d';
+import { $ } from './shell.js?v=625083e9';
 
 /* ---------------- chain reads ---------------- */
 const LCD = 'https://terra-classic-lcd.publicnode.com';
@@ -129,6 +129,7 @@ function iconHTML(t){
   }                                          // known === 0 - файла нет, не ищем
   return '<span class="sym" style="background:' + swatch(sym) + '" ' +
          'data-sym="' + attr(sym) + '" ' +
+         'data-logo="' + attr(t.logo || '') + '" ' +
          'data-icons="' + attr(cands.join('|')) + '">' + sym[0] + '</span>';
 }
 

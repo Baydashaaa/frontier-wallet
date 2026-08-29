@@ -1,4 +1,4 @@
-import { EXTRA_PAIRS, FACTORIES, LCD, amt, getJSON, smart } from './chain.js?v=9c79938d';
+import { EXTRA_PAIRS, FACTORIES, LCD, amt, getJSON, smart } from './chain.js?v=625083e9';
 
 /* ---------------- discovery and pricing ----------------
    The chain has no "which CW20 does this address hold" endpoint. Balances live
@@ -358,14 +358,20 @@ const PUMP_FACTORY = 'terra1vd595gqyekq05p8hy9t0r9q68jtk5whleqt5py4wdwrqfykz74lq
 async function bondPrice(token){
   let r;
   // BondNotFound is the ordinary answer for most tokens, not an error worth
-  // reporting - almost nothing on the chain is bonded
-  try { r = await smart(PUMP_FACTORY, { bond: { filter: { by_token: token } } }); }
-  catch (e) { return null; }
+  // reporting - almost nothing on the chain is bonded. It arrives as a 500,
+  // which the retry logic read as "later", so the one question on the chain
+  // with the most permanent answer was being asked three times per token per
+  // open. Once now, and the "no" is kept: a token graduating off a curve shows
+  // up when the entry expires.
+  const hit = cacheGet('bond:' + token);
+  if (hit !== null) return hit || null;
+  try { r = await smart(PUMP_FACTORY, { bond: { filter: { by_token: token } } }, 1); }
+  catch (e) { if (e && e.status && e.status !== 429) cacheSet('bond:' + token, 0); return null; }
   const d = r && r.data;
-  if (!d || !d.price) return null;
+  if (!d || !d.price) { cacheSet('bond:' + token, 0); return null; }
   const p = Number(d.price);
   if (!isFinite(p) || p <= 0) return null;
-  return {
+  const out = {
     inLunc: p,
     // real LUNC in the curve. virtual_reserve is formula, not funds.
     depth: amt(d.native_balance, 6),
@@ -373,6 +379,11 @@ async function bondPrice(token){
     bond: true,
     status: d.status
   };
+  // A curve's price moves with every buy, so this is the one cached answer
+  // that goes stale on purpose - the six hour TTL is the whole point of not
+  // keeping it longer.
+  cacheSet('bond:' + token, out);
+  return out;
 }
 
 // Ask every factory whether it holds this exact pair. TerraSwap shaped ones

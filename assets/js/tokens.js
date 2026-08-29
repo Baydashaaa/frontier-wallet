@@ -1,6 +1,6 @@
-import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=9c79938d';
-import { DEC, cacheGet, cacheGetStale, cacheSet, graph, mapLimit, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=9c79938d';
-import { $, go } from './shell.js?v=9c79938d';
+import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=625083e9';
+import { DEC, cacheGet, cacheGetStale, cacheSet, graph, mapLimit, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=625083e9';
+import { $, go } from './shell.js?v=625083e9';
 
 // keep=true means this contract is on the address's list, so it earns a row
 // even at zero. Only an unknown contract has to prove itself with a balance.
@@ -116,6 +116,9 @@ const HOME_NOTE = 'LUNC and USTC use a price feed. Everything else is priced fro
 let HIDE_DUST = false;
 try { HIDE_DUST = localStorage.getItem('fw:dust') === '1'; } catch (e) {}
 let LAST = { found: [], px: {}, hint: '' };
+// The order the list is drawn in, settled at the end of a complete reading and
+// held through the incomplete ones that follow.
+let ORDER = [];
 // True while the market sweep is still running, which is exactly the window in
 // which the total is real but incomplete. TOTAL_SHOWN is the last one that was
 // not.
@@ -144,25 +147,136 @@ const DUST = 0.005;
 // empty: a zero on a core asset is exactly the number a user came to check, and
 // a panel that changes shape with the balance is a panel you cannot trust.
 const CORE_SYMS = ['LUNC', 'USTC'];
+// What a row is, as far as the screen is concerned. Two rows with this same
+// key are the same row grown older, and must be edited rather than replaced.
+function rowKey(t){
+  return t.contract || t.denom || ('sym:' + t.sym);
+}
+
+// The panel's shape never changes - two cells and a seam - so it is built once
+// and edited afterwards. Rebuilding it threw away the two <img> elements the
+// user looks at most, and they came back a letter at a time.
 function renderCore(rows){
   const box = $('#core');
   if (!box) return;
-  box.innerHTML = CORE_SYMS.map((sym, n) => {
-    const r = rows.find(x => x.t.sym === sym);
-    const has = !!r && r.fiat !== null;
-    return (n ? '<div class="core-seam"></div>' : '') +
-      '<div class="core-cell">' +
+  if (!box.querySelector('.core-cell')) {
+    box.innerHTML = CORE_SYMS.map((sym, n) =>
+      (n ? '<div class="core-seam"></div>' : '') +
+      '<div class="core-cell" data-sym="' + sym + '">' +
         '<div class="core-top">' +
-          (r ? iconHTML(r.t) : '<span class="core-dot"></span>') +
+          '<span class="core-dot"></span>' +
           '<span class="core-sym">' + sym + '</span>' +
         '</div>' +
-        '<div class="core-usd' + (r && r.shaky ? ' soft' : '') + '">' +
-          (has ? (r.shaky ? '\u2248' : '') + usd(r.fiat) : '\u2014') +
-        '</div>' +
-        '<div class="core-qty">' + fmt(r ? r.t.v : 0) + '</div>' +
-      '</div>';
-  }).join('');
-  paintIcons(box);
+        '<div class="core-usd">\u2014</div>' +
+        '<div class="core-qty">0</div>' +
+      '</div>').join('');
+  }
+  let painted = false;
+  CORE_SYMS.forEach(sym => {
+    const cell = box.querySelector('.core-cell[data-sym="' + sym + '"]');
+    if (!cell) return;
+    const r = rows.find(x => x.t.sym === sym);
+    // the placeholder dot becomes a real icon exactly once, when a row for this
+    // asset first exists
+    if (r && cell.querySelector('.core-dot')) {
+      cell.querySelector('.core-dot').outerHTML = iconHTML(r.t);
+      painted = true;
+    }
+    const usdEl = cell.querySelector('.core-usd');
+    const has = !!r && r.fiat !== null;
+    setText(usdEl, has ? (r.shaky ? '\u2248' : '') + usd(r.fiat) : '\u2014');
+    usdEl.classList.toggle('soft', !!(r && r.shaky));
+    setText(cell.querySelector('.core-qty'), fmt(r ? r.t.v : 0));
+  });
+  if (painted) paintIcons(box);
+}
+
+// Touching textContent when nothing changed still costs a layout pass on some
+// webviews, and there are several redraws per load.
+function setText(el, s){
+  if (el && el.textContent !== s) el.textContent = s;
+}
+
+// Everything inside the <li> except the <li> itself, so the same markup builds
+// a new row and is never used to rebuild an existing one.
+function rowInner(r){
+  const t = r.t;
+  return iconHTML(t) +
+    '<div class="row-main"><div class="row-name">' + t.sym + '</div>' +
+    '<div class="row-amt"></div></div>' +
+    '<div class="row-val"><div class="row-fiat"></div>' +
+    '<div class="row-sub"></div></div>';
+}
+
+function updateRow(el, r){
+  const t = r.t;
+  setText(el.querySelector('.row-amt'), fmt(t.v) + (t.note ? ' \u00b7 ' + t.note : ''));
+  const fiatEl = el.querySelector('.row-fiat');
+  setText(fiatEl, r.fiat !== null ? (r.shaky ? '\u2248' : '') + usd(r.fiat) : '\u2014');
+  fiatEl.classList.toggle('soft', !!r.shaky);
+  const subEl = el.querySelector('.row-sub');
+  setText(subEl, r.sub);
+  subEl.style.color = (t.pool && t.pool.depth < THIN_LUNC) ? 'var(--gold)' : '';
+  // A row can be drawn from a snapshot, which carries no logo, before the
+  // contract's own picture has been read. When it arrives the icon is worth
+  // one replacement - but only then, and only if a letter is still showing.
+  const ic = el.querySelector('.sym');
+  if (t.logo && ic && !ic.classList.contains('has-img') &&
+      (ic.getAttribute('data-logo') || '') !== t.logo) {
+    ic.outerHTML = iconHTML(t);
+    paintIcons(el);
+  }
+}
+
+/* Rows are matched to the elements already on screen by key, edited in place,
+   and moved with insertBefore - which relocates a live node rather than
+   building a new one, so an <img> that has finished loading stays loaded. The
+   old code assigned innerHTML on every redraw, and with six redraws in a load
+   every icon fell back to its letter six times while the browser fetched a
+   picture it already had. */
+function syncList(list, shown, emptyMsg){
+  if (!shown.length) {
+    if (!list.querySelector('li.empty')) list.innerHTML = '';
+    const e = list.querySelector('li.empty');
+    if (e) setText(e, emptyMsg);
+    else {
+      const li = document.createElement('li');
+      li.className = 'empty';
+      li.textContent = emptyMsg;
+      list.appendChild(li);
+    }
+    return;
+  }
+  const gone = list.querySelector('li.empty');
+  if (gone) gone.remove();
+
+  const have = {};
+  Array.prototype.forEach.call(list.querySelectorAll('li.row[data-k]'), el => {
+    have[el.getAttribute('data-k')] = el;
+  });
+
+  let prev = null;
+  const fresh = [];
+  shown.forEach(r => {
+    const k = rowKey(r.t);
+    let el = have[k];
+    if (el) {
+      delete have[k];
+      updateRow(el, r);
+    } else {
+      el = document.createElement('li');
+      el.className = 'row';
+      el.setAttribute('data-k', k);
+      el.innerHTML = rowInner(r);
+      updateRow(el, r);
+      fresh.push(el);
+    }
+    const at = prev ? prev.nextSibling : list.firstChild;
+    if (el !== at) list.insertBefore(el, at);
+    prev = el;
+  });
+  for (const k in have) have[k].remove();
+  fresh.forEach(el => paintIcons(el));
 }
 function renderTokens(list, found, px, hint){
   LAST = { found: found, px: px, hint: hint };
@@ -220,7 +334,25 @@ function renderTokens(list, found, px, hint){
   // by value, not by count - a hundred dollars belongs above eight cents no
   // matter how many decimal places the cheaper token happens to have
   const rank = r => (r.fiat === null ? -1 : r.fiat);
-  rows.sort((a, b) => rank(b) - rank(a) || b.t.v - a.t.v);
+  // ...but not while the values are still arriving. Sorting on a key that is
+  // -1 now and four hundred a second from now means the row a finger is
+  // reaching for has moved by the time it lands. The order is settled once,
+  // when the reading is complete, and held until the next complete one; rows
+  // found in between keep their place and newcomers go at the end.
+  if (!settling || !ORDER.length) {
+    rows.sort((a, b) => rank(b) - rank(a) || b.t.v - a.t.v);
+    if (!settling) ORDER = rows.map(r => rowKey(r.t));
+  } else {
+    const pos = {};
+    ORDER.forEach((k, i) => { pos[k] = i; });
+    rows.sort((a, b) => {
+      const ia = pos[rowKey(a.t)], ib = pos[rowKey(b.t)];
+      if (ia === undefined && ib === undefined) return rank(b) - rank(a) || b.t.v - a.t.v;
+      if (ia === undefined) return 1;
+      if (ib === undefined) return -1;
+      return ia - ib;
+    });
+  }
 
   const total = rows.reduce((a, r) => a + (r.fiat || 0), 0);
   // "no price" is not the same as "worth nothing" - TCO has no pool yet, and
@@ -230,21 +362,9 @@ function renderTokens(list, found, px, hint){
   const rest = rows.filter(r => CORE_SYMS.indexOf(r.t.sym) < 0);
   const shown = HIDE_DUST ? rest.filter(r => r.fiat === null || r.fiat >= DUST) : rest;
 
-  list.innerHTML = shown.length ? shown.map(r => {
-    const t = r.t;
-    return '<li class="row">' +
-      iconHTML(t) +
-      '<div class="row-main"><div class="row-name">' + t.sym + '</div>' +
-      '<div class="row-amt">' + fmt(t.v) + (t.note ? ' \u00b7 ' + t.note : '') + '</div></div>' +
-      '<div class="row-val"><div class="row-fiat' + (r.shaky ? ' soft' : '') + '">' +
-      (r.fiat !== null ? (r.shaky ? '\u2248' : '') + usd(r.fiat) : '\u2014') + '</div>' +
-      '<div class="row-sub"' + (t.pool && t.pool.depth < THIN_LUNC ? ' style="color:var(--gold)"' : '') +
-      '>' + r.sub + '</div></div></li>';
-  }).join('') : '<li class="empty">' +
-    (rest.length ? 'Everything priced here rounds to zero. Turn off hide $0 to see it.'
-                 : 'This address holds nothing yet.') + '</li>';
-
-  paintIcons(list);
+  syncList(list, shown, rest.length
+    ? 'Everything priced here rounds to zero. Turn off hide $0 to see it.'
+    : 'This address holds nothing yet.');
   // the hidden ones are still counted, so the number never lies about the wallet
   $('#tok-count').textContent = !rest.length ? ''
     : (shown.length < rest.length ? shown.length + ' of ' + rest.length : String(rest.length));
