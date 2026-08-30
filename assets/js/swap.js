@@ -4,12 +4,12 @@
 // пул сам умеет ответить, сколько отдаст за конкретную сумму, с учётом
 // проскальзывания и комиссии. Считать это самому - значит показать одно
 // число, а получить другое.
-import { amt, fmt, iconHTML, paintIcons, usd } from './chain.js?v=1a721539';
-import { $, go, tap } from './shell.js?v=1a721539';
-import { assetOf, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, poolsBetween, reserves, simulateSwap } from './market.js?v=1a721539';
-import { fiatOf, heldTokens, refreshBalances } from './tokens.js?v=1a721539';
-import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=1a721539';
-import { S } from './state.js?v=1a721539';
+import { THIN_LUNC, amt, fmt, iconHTML, paintIcons, usd } from './chain.js?v=d9bfa6cb';
+import { $, go, tap } from './shell.js?v=d9bfa6cb';
+import { assetOf, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, poolsBetween, reserves, simulateSwap } from './market.js?v=d9bfa6cb';
+import { fiatOf, heldTokens, refreshBalances } from './tokens.js?v=d9bfa6cb';
+import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=d9bfa6cb';
+import { S } from './state.js?v=d9bfa6cb';
 
 const LUNC = { sym: 'LUNC', denom: 'uluna', dec: 6, native: true };
 let FROM = LUNC, TO = null, TIMER = null, SEQ = 0;
@@ -466,6 +466,15 @@ async function learnPrice(t){
   if (lunc === null) return;
   const p = await mapPrice(k).catch(() => null);
   if (!p || !p.inLunc) { console.warn('[swap] no route to price', k); return; }
+  // The narrowest leg of the route, in LUNC. Below the line where a pool stops
+  // being a market, the number it produces is not a price - it is whatever the
+  // last person to touch that pool left behind, and printing it next to a real
+  // amount would be the most confident thing on the screen.
+  if (p.depth !== undefined && p.depth < THIN_LUNC) {
+    console.warn('[swap] route too thin to price', k, 'narrow leg', Math.round(p.depth),
+                 'LUNC, floor is', THIN_LUNC);
+    return;
+  }
   // Printed because a wrong price is otherwise untraceable: the number on the
   // screen says nothing about which pool produced it, and finding that out by
   // hand took two rounds.
