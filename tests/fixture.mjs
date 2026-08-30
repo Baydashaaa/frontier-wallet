@@ -54,8 +54,10 @@ export const POOLS = {
   // 1 CL8Y = 0.5 USTC.
   P_CUSTC_CL8Y: { a: A.CUSTC, ra: u(2.9e6, 6), b: A.CL8Y, rb: u(5.8e6, 18),
                   dex: 'cl' },
+  // published by the feed as well, which is where the contract's internal name
+  // comes from and why the issuer has to outrank it
   P_CL8Y_USTC: { a: A.CL8Y, ra: u(48000, 18), b: A.USTC, rb: u(24000, 6),
-                 dex: 'gd' }
+                 dex: 'gd', feed: 400 }
 };
 
 /* Seven neighbours of USTR that lead nowhere, declared ahead of the one that
@@ -157,9 +159,12 @@ function fail(status, note){
    the issuer says eighteen. That disagreement is the reason the issuer's list
    has to win, so the fixture has to contain it. */
 const FEED_DEC = { [A.USTR]: 6 };
+// the feed reports a contract's internal name where the issuer publishes the
+// ticker people actually use
+const FEED_SYM = { [A.CL8Y]: 'CL8Y-cb' };
 const side = key => ({
   address: key.slice(key.indexOf(':') + 1),
-  symbol: META[key].sym,
+  symbol: FEED_SYM[key] || META[key].sym,
   decimals: FEED_DEC[key] === undefined ? META[key].dec : FEED_DEC[key],
   type: key.slice(0, 5) === 'cw20:' ? 'CW20' : 'NATIVE'
 });

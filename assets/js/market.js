@@ -1,4 +1,4 @@
-import { EXTRA_PAIRS, FACTORIES, LCD, THIN_LUNC, amt, getJSON, smart } from './chain.js?v=83eff145';
+import { EXTRA_PAIRS, FACTORIES, LCD, THIN_LUNC, amt, getJSON, smart } from './chain.js?v=23835b48';
 
 /* ---------------- discovery and pricing ----------------
    The chain has no "which CW20 does this address hold" endpoint. Balances live
@@ -97,7 +97,10 @@ function knownAsset(key){
   };
   return {
     key: key,
-    sym: pick('sym', [feed, list, kept]),
+    // the issuer first, as with everything else it publishes. A feed reports
+    // whatever string the contract carries, and a contract's internal name is
+    // not always the one the token is traded under.
+    sym: pick('sym', [list, feed, kept]),
     // the issuer's list first for both: it is the only authority on either
     dec: pick('dec', [list, feed, kept]),
     logo: pick('logo', [list, feed, kept])

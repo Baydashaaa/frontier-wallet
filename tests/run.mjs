@@ -15,7 +15,7 @@ group('the market map');
   await mod.owMarket();
 
   const peers = mod.directPeers(A.USTC).map(p => p.sym).sort();
-  ok('feed peers are found', peers.join(',') === 'LUNC,USTR', peers.join(','));
+  ok('feed peers are found', peers.join(',') === 'CL8Y-cb,LUNC,USTR', peers.join(','));
 
   ok('a pool the feed does not publish is not in the map yet',
      mod.poolsBetween(A.UST1, A.USTR).length === 0);
@@ -34,6 +34,11 @@ group('the published token list');
   ok('symbol resolves', ustr && ustr.sym === 'USTR');
   // the feed says 6 for USTR and the issuer says 18; the issuer wins
   ok('decimals come from the issuer, not the feed', ustr && ustr.dec === 18, String(ustr && ustr.dec));
+  // the feed calls it CL8Y-cb, which is the contract's internal name; the
+  // issuer publishes CL8Y, which is what it is called everywhere else
+  const cl8y = mod.knownAsset(A.CL8Y);
+  ok('the ticker comes from the issuer, not the feed',
+     cl8y && cl8y.sym === 'CL8Y', cl8y && cl8y.sym);
   ok('the logo survives a feed entry that has none',
      ustr && ustr.logo === META[A.USTR].logo, String(ustr && ustr.logo));
   ok('decimals reach the arithmetic, not just the record',
@@ -44,9 +49,12 @@ group('naming an asset nobody published');
 {
   const { mod, chain } = await loadMarket({ noTokenList: true });
   await mod.owMarket();
-  const a = await mod.learnAsset(A.CL8Y);
-  ok('the contract is asked when no list covers it', a && a.sym === 'CL8Y');
-  ok('and its decimals reach DEC too', mod.DEC[A.CL8Y] === 18, String(mod.DEC[A.CL8Y]));
+  // something in a pool but in neither the feed nor the list: the only way to
+  // learn its name is to ask it
+  const orphan = 'cw20:terra1dead0';
+  const a = await mod.learnAsset(orphan);
+  ok('the contract is asked when no list covers it', a && a.sym === 'DEAD0', a && a.sym);
+  ok('and its decimals reach DEC too', mod.DEC[orphan] === 6, String(mod.DEC[orphan]));
   ok('token_info was actually queried', chain.calls.byMsg.token_info > 0);
 }
 
