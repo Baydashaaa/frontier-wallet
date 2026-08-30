@@ -4,12 +4,12 @@
 // пул сам умеет ответить, сколько отдаст за конкретную сумму, с учётом
 // проскальзывания и комиссии. Считать это самому - значит показать одно
 // число, а получить другое.
-import { THIN_LUNC, amt, fmt, iconHTML, paintIcons, usd } from './chain.js?v=2819b24f';
-import { $, go, tap } from './shell.js?v=2819b24f';
-import { assetOf, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, poolsBetween, reserves, simulateSwap } from './market.js?v=2819b24f';
-import { fiatOf, heldTokens, refreshBalances } from './tokens.js?v=2819b24f';
-import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=2819b24f';
-import { S } from './state.js?v=2819b24f';
+import { THIN_LUNC, amt, fmt, iconHTML, paintIcons, usd } from './chain.js?v=3c749a0c';
+import { $, go, tap } from './shell.js?v=3c749a0c';
+import { assetOf, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, poolsBetween, reserves, simulateSwap } from './market.js?v=3c749a0c';
+import { fiatOf, heldTokens, refreshBalances } from './tokens.js?v=3c749a0c';
+import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=3c749a0c';
+import { S } from './state.js?v=3c749a0c';
 
 const LUNC = { sym: 'LUNC', denom: 'uluna', dec: 6, native: true };
 let FROM = LUNC, TO = null, TIMER = null, SEQ = 0;
@@ -96,7 +96,14 @@ let WALKING = false;
 function ensureGraph(){
   if (WALKING || graphReady()) return;
   WALKING = true;
-  graph().then(function () { fillPickers(); drawSheet(); }).catch(function () {});
+  graph().then(function () {
+    // Every "asked, no answer" from before the walk was answered against a
+    // market missing two whole exchanges. Those are not settled questions any
+    // more, so the marks come off and the screen asks again.
+    for (const k in PX) if (PX[k] === null) delete PX[k];
+    fillPickers();
+    drawSheet();
+  }).catch(function () {});
 }
 
 // The destination list is a different question. Sending someone into a pool too

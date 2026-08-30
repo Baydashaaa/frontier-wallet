@@ -1,4 +1,4 @@
-import { EXTRA_PAIRS, FACTORIES, LCD, THIN_LUNC, amt, getJSON, smart } from './chain.js?v=2819b24f';
+import { EXTRA_PAIRS, FACTORIES, LCD, THIN_LUNC, amt, getJSON, smart } from './chain.js?v=3c749a0c';
 
 /* ---------------- discovery and pricing ----------------
    The chain has no "which CW20 does this address hold" endpoint. Balances live
@@ -247,9 +247,19 @@ const USTC_KEY = 'native:uusd';
    callers are concurrent by design: both sides of a swap are priced at once and
    the token list prices four at a time, so the racing caller was the common
    case rather than the rare one. */
-let HUBS = null;
+/* Rebuilt once, when the factory walk has been done and not before.
+   The first price request comes from the token list, and at that point the only
+   pools anyone knows are the ones the market feed publishes - which is every
+   exchange except CL8Y and TwingoSwap. cUSTC lives entirely in the part the
+   feed does not cover, so a hub list built at that moment cannot contain it,
+   and memoising the promise then fixed that gap in place for the whole session.
+   One rebuild, the first time the walk has actually delivered. */
+let HUBS = null, HUBS_WALKED = false;
 function hubs(){
-  if (!HUBS) HUBS = buildHubs().catch(function () { HUBS = null; return []; });
+  const walked = graphReady();
+  if (HUBS && (HUBS_WALKED || !walked)) return HUBS;
+  HUBS_WALKED = walked;
+  HUBS = buildHubs().catch(function () { HUBS = null; return []; });
   return HUBS;
 }
 
