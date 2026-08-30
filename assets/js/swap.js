@@ -4,12 +4,12 @@
 // пул сам умеет ответить, сколько отдаст за конкретную сумму, с учётом
 // проскальзывания и комиссии. Считать это самому - значит показать одно
 // число, а получить другое.
-import { THIN_LUNC, amt, fmt, iconHTML, paintIcons, usd } from './chain.js?v=5fb3b1b7';
-import { $, go, tap } from './shell.js?v=5fb3b1b7';
-import { assetOf, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, midsBetween, poolsBetween, reserves, simulateSwap } from './market.js?v=5fb3b1b7';
-import { fiatOf, heldTokens, refreshBalances, remember } from './tokens.js?v=5fb3b1b7';
-import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=5fb3b1b7';
-import { S } from './state.js?v=5fb3b1b7';
+import { THIN_LUNC, amt, fmt, iconHTML, paintIcons, usd } from './chain.js?v=53330a9b';
+import { $, go, tap } from './shell.js?v=53330a9b';
+import { assetOf, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, midsBetween, poolsBetween, reserves, simulateSwap } from './market.js?v=53330a9b';
+import { fiatOf, heldTokens, refreshBalances, remember } from './tokens.js?v=53330a9b';
+import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=53330a9b';
+import { S } from './state.js?v=53330a9b';
 
 const LUNC = { sym: 'LUNC', denom: 'uluna', dec: 6, native: true };
 let FROM = LUNC, TO = null, TIMER = null, SEQ = 0;
@@ -440,24 +440,31 @@ const legCost = (d, dec) => {
    case nobody will get. */
 async function quoteHop(mids, raw, refused){
   let best = null, asked = 0;
+  // Which candidates were tried and where each one stopped. "no route" with an
+  // empty refusal list says only that nothing was asked, which is the one
+  // answer that explains nothing.
+  const trace = [];
   for (const m of mids.slice(0, 2)) {
     const mid = tokenFor(m.key);
-    if (!mid) continue;
+    if (!mid) { trace.push(m.key.slice(0, 14) + ':unnamed'); continue; }
     const dMid = decOf(mid);
 
     const one = await bestPool(m.first, keyOf(FROM), raw, refused);
     asked += one.tried;
-    if (!one.best) continue;
+    if (!one.best) { trace.push(mid.sym + ':leg1 none of ' + one.tried); continue; }
 
     const min1 = String(Math.floor(Number(one.best.d.return_amount) * (1 - SLIP)));
-    if (!(Number(min1) > 0)) continue;
+    if (!(Number(min1) > 0)) {
+      trace.push(mid.sym + ':leg1 returned ' + one.best.d.return_amount); continue;
+    }
 
     const two = await bestPool(m.second, m.key, min1, refused);
     asked += two.tried;
-    if (!two.best) continue;
+    if (!two.best) { trace.push(mid.sym + ':leg2 none of ' + two.tried); continue; }
 
     const outRaw = Number(two.best.d.return_amount);
     if (!(outRaw > 0)) continue;
+    trace.push(mid.sym + ':ok ' + outRaw);
     if (best && outRaw <= Number(best.returnRaw)) continue;
 
     best = {
@@ -473,6 +480,10 @@ async function quoteHop(mids, raw, refused){
           offerRaw: min1, returnRaw: two.best.d.return_amount }
       ]
     };
+  }
+  if (!best) {
+    console.info('[hop]', mids.length + ' candidates,', trace.join(' | ') || 'none tried',
+                 '| refusals', refused.length);
   }
   return best;
 }

@@ -1,6 +1,6 @@
-import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=5fb3b1b7';
-import { DEC, cacheGet, cacheGetStale, cacheSet, cl8yList, graph, graphReady, knownAsset, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=5fb3b1b7';
-import { $, go } from './shell.js?v=5fb3b1b7';
+import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=53330a9b';
+import { DEC, cacheGet, cacheGetStale, cacheSet, cl8yList, graph, graphReady, knownAsset, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=53330a9b';
+import { $, go } from './shell.js?v=53330a9b';
 
 // keep=true means this contract is on the address's list, so it earns a row
 // even at zero. Only an unknown contract has to prove itself with a balance.
@@ -18,22 +18,28 @@ async function tokenRow(c, addr, known, keep){
     ]);
     if (!fixed) {
       const t = info.data;
-      // The issuer's list outranks the contract's own string, exactly as it
-      // does on the swap screen: CL8Y ships as "CL8Y-cb" and is called CL8Y
-      // everywhere it is traded, including by the people who issued it.
-      const pub = knownAsset('cw20:' + c);
       fixed = {
-        sym: (pub && pub.sym) || t.symbol,
+        sym: t.symbol,
         dec: t.decimals,
         note: t.name,
         // the contract's own logo first, then the map's. Eight of your tokens
         // have nothing in marketing_info, and the chain simply has no picture
         // for them - it has to come from somewhere else or not at all.
-        logo: (await chainLogo(c, mkt).catch(() => null)) || (pub && pub.logo) || owLogo(c) || null
+        logo: (await chainLogo(c, mkt).catch(() => null)) || owLogo(c) || null
       };
       cacheSet('ti:' + c, fixed);
     }
-    const d = { symbol: fixed.sym, decimals: fixed.dec, name: fixed.note };
+    /* Laid over the record when it is read, not when it is written.
+       The issuer's list outranks the contract's own string - CL8Y ships as
+       "CL8Y-cb" and is called CL8Y everywhere it is traded, including by the
+       people who issued it. Doing this at write time meant the six hour cache
+       kept the old name for everyone who already had a record, which is
+       everyone; a name published tomorrow would have waited for the record to
+       expire before it appeared. */
+    const pub = knownAsset('cw20:' + c);
+    const d = { symbol: (pub && pub.sym) || fixed.sym,
+                decimals: fixed.dec, name: fixed.note };
+    if (pub && pub.logo && !fixed.logo) fixed = Object.assign({}, fixed, { logo: pub.logo });
     DEC['cw20:' + c] = d.decimals;
     const v = amt(bal.data && bal.data.balance, d.decimals);
     if (!(v > 0) && !keep) return null;
