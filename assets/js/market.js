@@ -1,4 +1,4 @@
-import { EXTRA_PAIRS, FACTORIES, LCD, THIN_LUNC, amt, getJSON, smart } from './chain.js?v=d9bfa6cb';
+import { EXTRA_PAIRS, FACTORIES, LCD, THIN_LUNC, amt, getJSON, smart } from './chain.js?v=5fb7db0e';
 
 /* ---------------- discovery and pricing ----------------
    The chain has no "which CW20 does this address hold" endpoint. Balances live
@@ -225,17 +225,38 @@ async function deepestLeg(pools, from, to, cap){
    a session and spends no part of the two-hop budget - which is the whole point
    of making USTC a base. */
 const USTC_KEY = 'native:uusd';
-let BRIDGE;
-async function ustcBridge(){
-  if (BRIDGE !== undefined) return BRIDGE;
-  const leg = await deepestLeg(poolsBetween(USTC_KEY, LUNC_KEY), USTC_KEY, LUNC_KEY, 3);
-  BRIDGE = leg || null;
-  return BRIDGE;
+
+/* The assets a price is allowed to terminate at, beyond LUNC itself.
+   Each one is worth a fixed amount of LUNC through a pool deep enough that the
+   crossing is not what limits the answer, so reaching a hub is as good as
+   reaching LUNC - and it costs no part of the two-hop budget.
+
+   They are built in order, each against the ones already established. USTC
+   against LUNC, then cUSTC against USTC: cUSTC is a wrapper on USTC and the way
+   in and out of everything CL8Y lists, so with it as a hub a token like USTR
+   reaches a base in two hops (USTR, UST1, cUSTC) instead of needing three. */
+let HUBS;
+async function hubs(){
+  if (HUBS) return HUBS;
+  HUBS = [];
+  const ustc = await deepestLeg(poolsBetween(USTC_KEY, LUNC_KEY), USTC_KEY, LUNC_KEY, 3);
+  if (!ustc) return HUBS;
+  HUBS.push({ key: USTC_KEY, rate: ustc.rate, far: ustc.far,
+              route: [{ pair: ustc.pair }] });
+
+  await cl8yList();
+  const wrapped = LIST && Object.keys(LIST).filter(k => LIST[k].sym === 'cUSTC')[0];
+  if (!wrapped) return HUBS;
+  const leg = await routeTo(wrapped, USTC_KEY);
+  if (!leg) return HUBS;
+  HUBS.push({ key: wrapped,
+              rate: leg.rate * ustc.rate,
+              // still limited by its own narrowest leg, crossing included
+              far: Math.min(leg.depth * ustc.rate, ustc.far),
+              route: leg.route.concat([{ pair: ustc.pair }]) });
+  return HUBS;
 }
 
-/* One asset, one base, at most two hops. Pulled out of mapPrice so the same
-   search can be run against either base without being written twice. Depth is
-   returned in units of the base. */
 async function routeTo(key, base){
   const direct = poolsBetween(key, base);
   if (direct.length) {
@@ -275,39 +296,41 @@ async function mapPrice(key){
   await cl8yList();
 
   const viaLunc = await routeTo(key, LUNC_KEY);
-  // A deep pool straight to LUNC ends the question; searching the second base
-  // as well would only spend reads to confirm what is already known.
+  // A deep pool straight to LUNC ends the question; searching the hubs as well
+  // would only spend reads to confirm what is already known.
   if (viaLunc && viaLunc.hops === 1 && viaLunc.depth >= THIN_LUNC) {
     return { inLunc: viaLunc.rate, depth: viaLunc.depth, hops: 1,
              route: viaLunc.route, legs: viaLunc.legs };
   }
 
-  let viaUstc = null;
-  if (key !== USTC_KEY) {
-    const bridge = await ustcBridge();
-    const r = bridge && await routeTo(key, USTC_KEY);
-    if (r) {
-      // converted into LUNC, depths included, so the two candidates are judged
-      // on one scale. The bridge leg is deep by construction, so a route
-      // through USTC is limited by its own first hops and not by the crossing.
-      viaUstc = {
-        rate: r.rate * bridge.rate,
-        depth: Math.min(r.depth * bridge.rate, bridge.far),
-        hops: r.hops + 1,
-        route: r.route.concat([{ pair: bridge.pair }]),
-        via: r.via || USTC_KEY,
-        legs: (r.legs || []).map(x => x * bridge.rate).concat([bridge.far])
-      };
-    }
+  let best = viaLunc ? {
+    rate: viaLunc.rate, depth: viaLunc.depth, hops: viaLunc.hops,
+    route: viaLunc.route, via: viaLunc.via, legs: viaLunc.legs
+  } : null;
+
+  for (const h of await hubs()) {
+    if (key === h.key) continue;
+    // once something is good enough to trade against, a wider one changes
+    // nothing on screen and costs a dozen more reads
+    if (best && best.depth >= THIN_LUNC) break;
+    const r = await routeTo(key, h.key);
+    if (!r) continue;
+    // converted into LUNC, depths included, so every candidate is judged on one
+    // scale whichever base it reached
+    const cand = {
+      rate: r.rate * h.rate,
+      depth: Math.min(r.depth * h.rate, h.far),
+      hops: r.hops + h.route.length,
+      route: r.route.concat(h.route),
+      via: r.via || h.key,
+      legs: (r.legs || []).map(x => x * h.rate).concat([h.far])
+    };
+    if (!best || cand.depth > best.depth) best = cand;
   }
 
-  // the wider narrow leg wins, whichever base it reached
-  const pick = !viaLunc ? viaUstc
-             : !viaUstc ? viaLunc
-             : viaUstc.depth > viaLunc.depth ? viaUstc : viaLunc;
-  if (!pick) return null;
-  return { inLunc: pick.rate, depth: pick.depth, hops: pick.hops,
-           route: pick.route, via: pick.via, legs: pick.legs };
+  if (!best) return null;
+  return { inLunc: best.rate, depth: best.depth, hops: best.hops,
+           route: best.route, via: best.via, legs: best.legs };
 }
 
 // Two dialects, one question. TerraSwap asks `simulation` and wraps the side
