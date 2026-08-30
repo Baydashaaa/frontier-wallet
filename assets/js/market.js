@@ -1,4 +1,4 @@
-import { EXTRA_PAIRS, FACTORIES, LCD, amt, getJSON, smart } from './chain.js?v=14aa67c4';
+import { EXTRA_PAIRS, FACTORIES, LCD, amt, getJSON, smart } from './chain.js?v=5f38266d';
 
 /* ---------------- discovery and pricing ----------------
    The chain has no "which CW20 does this address hold" endpoint. Balances live
@@ -238,15 +238,23 @@ async function mapPrice(key){
      several ways out, and they do not agree. The one to believe is the one with
      the most LUNC behind it, because that is the leg a real trade would have to
      push through. */
-  const mids = directPeers(key).concat(graphPeers(key))
-    .filter(p => p.key !== key && p.key !== LUNC_KEY);
-  const tried = {};
+  // Deduplicated and filtered down to the ones that actually reach LUNC BEFORE
+  // the cut, not after it. Taking the first six of every neighbour and then
+  // asking which of those six lead anywhere is a different question, and for a
+  // token surrounded by other tokens of its own exchange it is usually answered
+  // "none of them" - the useful neighbour was seventh, and the ordering that
+  // put it there is arbitrary because none of these depths are known.
+  const seen = {};
+  const mids = [];
+  for (const p of directPeers(key).concat(graphPeers(key))) {
+    if (p.key === key || p.key === LUNC_KEY || seen[p.key]) continue;
+    seen[p.key] = 1;
+    if (!poolsBetween(p.key, LUNC_KEY).length) continue;
+    mids.push(p);
+  }
   let best = null;
   for (const m of mids.slice(0, 6)) {
-    if (tried[m.key]) continue;
-    tried[m.key] = 1;
     const out = poolsBetween(m.key, LUNC_KEY);
-    if (!out.length) continue;
     const two = await deepestLeg(out, m.key, LUNC_KEY, 2);
     if (!two) continue;
     const one = await deepestLeg(poolsBetween(key, m.key), key, m.key, 2);
