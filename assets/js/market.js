@@ -1,4 +1,4 @@
-import { EXTRA_PAIRS, FACTORIES, LCD, amt, getJSON, smart } from './chain.js?v=5f38266d';
+import { EXTRA_PAIRS, FACTORIES, LCD, amt, getJSON, smart } from './chain.js?v=1a721539';
 
 /* ---------------- discovery and pricing ----------------
    The chain has no "which CW20 does this address hold" endpoint. Balances live
@@ -259,11 +259,19 @@ async function mapPrice(key){
     if (!two) continue;
     const one = await deepestLeg(poolsBetween(key, m.key), key, m.key, 2);
     if (!one) continue;
-    // depth is the LUNC end of the route: the narrow leg is what a trade
-    // actually runs into, and that is the far side of the second hop
-    if (!best || two.far > best.depth) {
-      best = { inLunc: one.rate * two.rate, depth: two.far, hops: 2,
-               route: [{ pair: one.pair }, { pair: two.pair }], via: m.key };
+    /* The narrow leg, in LUNC, is the route's depth.
+       one.far is the middle asset sitting in the first pool; two.rate converts
+       the middle asset into LUNC, so one.far * two.rate is that first pool
+       measured in the same unit as the second. The smaller of the two is what a
+       trade would actually run into - and ranking by the larger is how a
+       shallow first hop kept winning on the strength of the deep pool behind
+       it. */
+    const legOne = one.far * two.rate;
+    const narrow = Math.min(legOne, two.far);
+    if (!best || narrow > best.depth) {
+      best = { inLunc: one.rate * two.rate, depth: narrow, hops: 2,
+               route: [{ pair: one.pair }, { pair: two.pair }], via: m.key,
+               legs: [legOne, two.far] };
     }
   }
   return best;

@@ -4,12 +4,12 @@
 // пул сам умеет ответить, сколько отдаст за конкретную сумму, с учётом
 // проскальзывания и комиссии. Считать это самому - значит показать одно
 // число, а получить другое.
-import { amt, fmt, iconHTML, paintIcons, usd } from './chain.js?v=5f38266d';
-import { $, go, tap } from './shell.js?v=5f38266d';
-import { assetOf, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, poolsBetween, reserves, simulateSwap } from './market.js?v=5f38266d';
-import { fiatOf, heldTokens, refreshBalances } from './tokens.js?v=5f38266d';
-import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=5f38266d';
-import { S } from './state.js?v=5f38266d';
+import { amt, fmt, iconHTML, paintIcons, usd } from './chain.js?v=1a721539';
+import { $, go, tap } from './shell.js?v=1a721539';
+import { assetOf, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, poolsBetween, reserves, simulateSwap } from './market.js?v=1a721539';
+import { fiatOf, heldTokens, refreshBalances } from './tokens.js?v=1a721539';
+import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=1a721539';
+import { S } from './state.js?v=1a721539';
 
 const LUNC = { sym: 'LUNC', denom: 'uluna', dec: 6, native: true };
 let FROM = LUNC, TO = null, TIMER = null, SEQ = 0;
@@ -472,7 +472,8 @@ async function learnPrice(t){
   console.info('[swap] price', k, '=', p.inLunc * lunc, 'usd via',
                p.hops + ' hop' + (p.hops > 1 ? 's' : ''),
                p.via || '', p.route.map(r => r.pair).join(' -> '),
-               'depth', p.depth);
+               'depth', p.depth,
+               p.legs ? '(legs in LUNC: ' + p.legs.map(Math.round).join(', ') + ')' : '');
   PX[k] = p.inLunc * lunc;
   paintUsd();
 }
