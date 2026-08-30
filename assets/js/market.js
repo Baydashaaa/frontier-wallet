@@ -1,4 +1,4 @@
-import { EXTRA_PAIRS, FACTORIES, LCD, amt, getJSON, smart } from './chain.js?v=c555deab';
+import { EXTRA_PAIRS, FACTORIES, LCD, amt, getJSON, smart } from './chain.js?v=14aa67c4';
 
 /* ---------------- discovery and pricing ----------------
    The chain has no "which CW20 does this address hold" endpoint. Balances live
@@ -83,6 +83,9 @@ function knownAsset(key){
   const list = LIST && LIST[key];
   const kept = cacheGetStale('as:' + key);
   if (!feed && !list && !kept) return null;
+  // whatever we settle on below, the scale has to reach the arithmetic
+  const known = (list && list.dec) || (kept && kept.dec) || (feed && feed.dec);
+  if (known !== undefined && known !== null) DEC[key] = known;
   const pick = (field, order) => {
     for (const src of order) if (src && src[field] !== undefined && src[field] !== null) return src[field];
     return null;
@@ -105,6 +108,12 @@ async function learnAsset(key){
   if (!d || !d.symbol) return null;
   const a = { key: key, sym: d.symbol,
               dec: d.decimals === undefined ? 6 : d.decimals, logo: null };
+  // Into DEC as well, and this is the point of the whole call: legRate scales
+  // a reserve by ten to the power of what it finds there, and finding nothing
+  // means six. A contract that says eighteen and is not heard is a price out
+  // by a factor of a trillion - which is exactly what USTR was doing before
+  // the published list happened to cover it.
+  if (d.decimals !== undefined) DEC[key] = d.decimals;
   cacheSet('as:' + key, a);
   ASSET[key] = a;
   return a;
