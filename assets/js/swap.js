@@ -4,12 +4,12 @@
 // пул сам умеет ответить, сколько отдаст за конкретную сумму, с учётом
 // проскальзывания и комиссии. Считать это самому - значит показать одно
 // число, а получить другое.
-import { amt, fmt, iconHTML, paintIcons, usd } from './chain.js?v=de1daa50';
-import { $, go, tap } from './shell.js?v=de1daa50';
-import { assetOf, directPeers, gdInfo, poolsBetween, reserves, simulateSwap } from './market.js?v=de1daa50';
-import { fiatOf, heldTokens, refreshBalances } from './tokens.js?v=de1daa50';
-import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=de1daa50';
-import { S } from './state.js?v=de1daa50';
+import { amt, fmt, iconHTML, paintIcons, usd } from './chain.js?v=7de9d2c8';
+import { $, go, tap } from './shell.js?v=7de9d2c8';
+import { assetOf, directPeers, gdInfo, poolPrice, poolsBetween, reserves, simulateSwap } from './market.js?v=7de9d2c8';
+import { fiatOf, heldTokens, refreshBalances } from './tokens.js?v=7de9d2c8';
+import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=7de9d2c8';
+import { S } from './state.js?v=7de9d2c8';
 
 const LUNC = { sym: 'LUNC', denom: 'uluna', dec: 6, native: true };
 let FROM = LUNC, TO = null, TIMER = null, SEQ = 0;
@@ -101,10 +101,17 @@ function comfortOf(){
   return d && d > 0 ? d * 0.01 : 0;
 }
 
-async function learnDepth(){
-  const pools = poolsBetween(keyOf(FROM), keyOf(TO));
-  if (!pools.length || DEPTH[pools[0].pair] !== undefined) return;
-  const pair = pools[0].pair;
+// Which pool: the deepest one by the map when nothing has been quoted yet, and
+// the one the quote actually chose once it has. Those differ - the best pool
+// for an amount is not always the biggest - and reading the wrong one is why
+// the depth line sat on "reading" forever.
+async function learnDepth(pair){
+  if (!pair) {
+    const pools = poolsBetween(keyOf(FROM), keyOf(TO));
+    if (!pools.length) return;
+    pair = pools[0].pair;
+  }
+  if (DEPTH[pair] !== undefined) return;
   DEPTH[pair] = 0;                       // asked, so the next paint does not re-ask
   const res = await reserves(pair).catch(() => null);
   if (!res) return;
@@ -112,6 +119,19 @@ async function learnDepth(){
   if (!mine) return;
   DEPTH[pair] = amt(mine.raw, decOf(FROM));
   paintZones();
+  if (DETAIL && DETAIL.pair === pair) redrawDetail();
+}
+
+let DETAIL = null;
+function redrawDetail(){
+  if (!DETAIL) return;
+  const d = DEPTH[DETAIL.pair];
+  detail(DETAIL.lines.map(function (l) {
+    if (l.k !== 'Pool depth') return l;
+    return { k: 'Pool depth',
+             v: d ? fmt(d) + ' ' + DETAIL.sym : 'not readable',
+             tone: d && d < DETAIL.size * 20 ? 'warn' : '' };
+  }));
 }
 
 function paintZones(){
@@ -147,6 +167,9 @@ function fillPickers(){
   $('#sw-avail').textContent = bal ? fmt(bal) + ' available' : '';
   paintZones();
   learnDepth();
+  learnPrice(FROM);
+  learnPrice(TO);
+  paintUsd();
 }
 
 // The pay side is what you hold and can actually sell. The receive side is
@@ -248,7 +271,8 @@ function detail(lines){
 
 async function quote(){
   const my = ++SEQ;
-  QUOTE = null; PLAN = null; armGo('Enter an amount', false);
+  QUOTE = null; PLAN = null; DETAIL = null; armGo('Enter an amount', false);
+  paintUsd();
   const v = parseFloat(String($('#sw-amt').value).replace(',', '.'));
   const out = $('#sw-out');
 
@@ -283,6 +307,7 @@ async function quote(){
     pair = quotes[0].pair;
     const dialect = quotes[0].dialect;
     const d = quotes[0].d;
+    learnDepth(pair);       // the chosen pool, which may not be the deepest one
     // What the second best would have given - the whole point of asking more
     // than one pool. But only pools that could actually have taken the trade
     // count as second best: a pool holding a few hundred LUNC returns almost
@@ -302,11 +327,12 @@ async function quote(){
     out.classList.remove('dim');
     QUOTE = { pair: pair, dialect: dialect, offerRaw: raw, returnRaw: String(d.return_amount),
               got: got, dTo: dTo, pct: pct };
+    paintUsd();
     // an expensive trade should not be one tap away from an ordinary one
     armGo(!S.MNEMONIC ? 'Watch only, nothing can be signed'
           : pct >= 5 ? 'This costs ' + pct.toFixed(1) + '%, check it'
           : 'Check what this would cost', !!S.MNEMONIC);
-    detail([
+    const lines = [
       { k: 'Rate', v: '1 ' + FROM.sym + ' = ' + fmt(got / v) + ' ' + TO.sym },
       { k: 'Price impact', v: pct.toFixed(2) + '%',
         tone: pct >= 5 ? 'bad' : pct >= 1 ? 'warn' : '' },
@@ -320,7 +346,9 @@ async function quote(){
         (edge === null
           ? (quotes.length > 1 ? ', the rest too thin to matter' : '')
           : edge > 0.01 ? ', best by ' + edge.toFixed(2) + '%' : '') }
-    ]);
+    ];
+    DETAIL = { pair: pair, sym: FROM.sym, size: v, lines: lines };
+    detail(lines);
   } catch (e) {
     if (my !== SEQ) return;
     out.textContent = '-'; out.classList.add('dim');
@@ -329,9 +357,62 @@ async function quote(){
   }
 }
 
+/* What one unit is worth, in dollars.
+   Two sources, in order. A token the wallet holds has already been priced by
+   the list, and asking it the same question twice is how two screens end up
+   disagreeing. Anything else - and the receive side is usually something the
+   wallet does not hold yet, which is the whole point of being able to buy it -
+   is priced from its own pool against LUNC, once, and kept. */
+const PX = {};
+function unitUsd(t){
+  const k = keyOf(t);
+  return PX[k] === undefined ? null : PX[k];
+}
+
+async function learnPrice(t){
+  if (!t) return;
+  const k = keyOf(t);
+  if (PX[k] !== undefined) return;
+  const own = fiatOf(Object.assign({}, t, { v: 1 }));
+  if (own !== null) { PX[k] = own; paintUsd(); return; }
+  PX[k] = null;                          // asked; a second miss costs nothing
+  if (!t.contract) return;
+  const lunc = fiatOf({ sym: 'LUNC', v: 1 });
+  const p = await poolPrice(t.contract, true).catch(() => null);
+  if (!p || !p.inLunc || lunc === null) return;
+  PX[k] = p.inLunc * lunc;
+  paintUsd();
+}
+
+// The dollar line under each amount. Built here rather than in the markup
+// because it belongs to this screen only, and hidden rather than zeroed when
+// there is no price - an empty line reads as "nothing", and a $0.00 reads as a
+// claim.
+function usdSlot(id){
+  let el = document.getElementById(id);
+  if (el) return el;
+  const anchor = $(id === 'sw-amt-usd' ? '#sw-amt' : '#sw-out');
+  if (!anchor) return null;
+  el = document.createElement('div');
+  el.id = id;
+  el.className = 'sw-usd';
+  anchor.insertAdjacentElement('afterend', el);
+  return el;
+}
+
+function paintUsd(){
+  const v = parseFloat(String($('#sw-amt').value).replace(',', '.'));
+  const pf = unitUsd(FROM), pt = unitUsd(TO);
+  const a = usdSlot('sw-amt-usd');
+  if (a) a.textContent = (isFinite(v) && v > 0 && pf !== null) ? '\u2248 ' + usd(v * pf) : '';
+  const b = usdSlot('sw-out-usd');
+  const got = QUOTE ? QUOTE.got : 0;
+  if (b) b.textContent = (got > 0 && pt !== null) ? '\u2248 ' + usd(got * pt) : '';
+}
+
 const schedule = () => { clearTimeout(TIMER); TIMER = setTimeout(quote, 400); };
 
-$('#sw-amt').addEventListener('input', schedule);
+$('#sw-amt').addEventListener('input', function () { paintUsd(); schedule(); });
 $('#sw-from').addEventListener('click', () => { tap(); openSheet('from'); });
 $('#sw-to').addEventListener('click', () => { tap(); openSheet('to'); });
 $('#sw-close').addEventListener('click', closeSheet);

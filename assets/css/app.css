@@ -455,7 +455,12 @@ textarea{resize:none;min-height:110px;line-height:1.8}
 /* Firefox takes the two-value form; WebKit needs the pseudo-elements. Both say
    the same thing: a thin track in the app's own colours instead of the
    platform's grey bar down the middle of the sheet. */
+/* min-height:0 is the whole fix. A flex child will not shrink below its own
+   content unless told it may, so the list ignored the sheet's max-height, the
+   sheet grew past the screen, and its last rows went under the bottom edge.
+   Every other value here was already right. */
 .sw-list{overflow-y:auto;display:flex;flex-direction:column;
+  flex:1 1 auto;min-height:0;
   scrollbar-width:thin;scrollbar-color:var(--border) transparent;
   overscroll-behavior:contain}
 .sw-list::-webkit-scrollbar{width:4px}
@@ -494,6 +499,12 @@ textarea{resize:none;min-height:110px;line-height:1.8}
   background:var(--sw-zones,linear-gradient(90deg,#7B5CFF,#00D4FF))}
 .sw-range::-moz-range-track{
   background:var(--sw-zones,linear-gradient(90deg,#7B5CFF,#00D4FF))}
+/* Sits directly under the amount it describes, in the quiet weight - the
+   number above is the one being typed, this one only says what it means. */
+.sw-usd{font-family:'Rajdhani',sans-serif;font-size:13px;color:var(--muted);
+  margin-top:2px;min-height:17px;letter-spacing:.02em}
+.sw-usd:empty{min-height:0}
+
 .sw-hint{margin-top:9px;font-size:11px;line-height:1.4;color:var(--muted)}
 .sw-hint b{font-family:'Rajdhani',sans-serif;font-weight:600;color:#00FFB0}
 

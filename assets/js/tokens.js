@@ -1,6 +1,6 @@
-import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=de1daa50';
-import { DEC, assetOf, cacheGet, cacheGetStale, cacheSet, graph, graphReady, mapLimit, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=de1daa50';
-import { $, go } from './shell.js?v=de1daa50';
+import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=7de9d2c8';
+import { DEC, assetOf, cacheGet, cacheGetStale, cacheSet, graph, graphReady, mapLimit, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=7de9d2c8';
+import { $, go } from './shell.js?v=7de9d2c8';
 
 // keep=true means this contract is on the address's list, so it earns a row
 // even at zero. Only an unknown contract has to prove itself with a balance.
@@ -467,6 +467,10 @@ async function loadBalances(addr, force){
     // in front of a wallet whose balances were already in hand. It runs on its
     // own now, seeded from the last figures it gave us, and the screen is
     // redrawn if and when it lands.
+    // Kicked off, not awaited: it is needed to name IBC denoms a few lines
+    // below, and it will be needed for pricing a moment later regardless. On a
+    // warm cache it is a localStorage read.
+    const owReady = owMarket().catch(() => null);
     const bank = await getJSON(LCD + '/cosmos/bank/v1beta1/balances/' + addr);
     const px = Object.assign({}, cacheGetStale('px') || {});
     prices().then(function (fresh) {
@@ -495,6 +499,7 @@ async function loadBalances(addr, force){
         // The market map names the denoms that actually trade, which is the set
         // worth naming, and it is already loaded. The node is asked only for
         // what the map has never heard of.
+        await owReady;
         const mapped = assetOf('native:' + b.denom);
         if (mapped && mapped.sym) {
           found.push({ sym: mapped.sym, v: amt(b.amount, mapped.dec), note: 'IBC',
