@@ -1,4 +1,4 @@
-import { EXTRA_PAIRS, FACTORIES, LCD, amt, getJSON, smart } from './chain.js?v=7de9d2c8';
+import { EXTRA_PAIRS, FACTORIES, LCD, amt, getJSON, smart } from './chain.js?v=7e6220a6';
 
 /* ---------------- discovery and pricing ----------------
    The chain has no "which CW20 does this address hold" endpoint. Balances live
@@ -52,6 +52,52 @@ function poolsBetween(a, b){
   return (OW.edges[a] || []).filter(e => e.to === b)
     .sort((x, y) => y.liq - x.liq)
     .map(e => ({ pair: e.pair, dex: e.dex, liq: e.liq }));
+}
+
+// One side of one pool, priced against the other. Decimals come from the map,
+// which carries them for everything it lists.
+async function legRate(pair, from, to){
+  const res = await reserves(pair).catch(() => null);
+  if (!res) return null;
+  const a = res.find(x => x.key === from), b = res.find(x => x.key === to);
+  if (!a || !b) return null;
+  const av = amt(a.raw, DEC[from] === undefined ? 6 : DEC[from]);
+  const bv = amt(b.raw, DEC[to] === undefined ? 6 : DEC[to]);
+  if (!(av > 0) || !(bv > 0)) return null;
+  return { rate: bv / av, far: bv };
+}
+
+// A price in LUNC for anything the map lists, in at most two hops, using only
+// what the map already holds plus a reserve read per hop.
+//
+// This is the same answer graph() gives, for the shape of route that covers
+// almost every token, without graph()'s price of admission - it has to page
+// every factory and read every pool before it can answer anything. Two hops is
+// the ceiling on purpose: a third would need a search, and a token three pools
+// away from LUNC is not one this screen can price honestly anyway.
+async function mapPrice(key){
+  if (!key || key === LUNC_KEY) return null;
+  const direct = poolsBetween(key, LUNC_KEY);
+  if (direct.length) {
+    const one = await legRate(direct[0].pair, key, LUNC_KEY);
+    if (one) return { inLunc: one.rate, depth: one.far, hops: 1,
+                      route: [{ pair: direct[0].pair }] };
+  }
+  // otherwise through the deepest neighbour that itself trades against LUNC
+  const mids = directPeers(key)
+    .filter(p => p.key !== LUNC_KEY && poolsBetween(p.key, LUNC_KEY).length);
+  for (const m of mids.slice(0, 2)) {
+    const one = await legRate(m.pair, key, m.key);
+    if (!one) continue;
+    const leg = poolsBetween(m.key, LUNC_KEY)[0];
+    const two = await legRate(leg.pair, m.key, LUNC_KEY);
+    if (!two) continue;
+    // depth is the LUNC end of the route: the narrow leg is what a trade
+    // actually runs into, and that is the far side of the second hop
+    return { inLunc: one.rate * two.rate, depth: two.far, hops: 2,
+             route: [{ pair: m.pair }, { pair: leg.pair }] };
+  }
+  return null;
 }
 
 // Two dialects, one question. TerraSwap asks `simulation` and wraps the side
@@ -576,4 +622,4 @@ async function poolPrice(token, quick){
   return await bondPrice(token).catch(() => null);
 }
 
-export { DEC, assetOf, cacheGet, cacheGetStale, cacheSet, directPairs, directPeers, gdInfo, graph, graphReady, mapLimit, marketComplete, owLogo, owMarket, poolPrice, poolsBetween, reserves, simulateSwap, tsInfo, txCandidates };
+export { DEC, assetOf, cacheGet, cacheGetStale, cacheSet, directPairs, directPeers, gdInfo, graph, graphReady, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, poolsBetween, reserves, simulateSwap, tsInfo, txCandidates };

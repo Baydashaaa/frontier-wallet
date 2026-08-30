@@ -4,12 +4,12 @@
 // пул сам умеет ответить, сколько отдаст за конкретную сумму, с учётом
 // проскальзывания и комиссии. Считать это самому - значит показать одно
 // число, а получить другое.
-import { amt, fmt, iconHTML, paintIcons, usd } from './chain.js?v=7de9d2c8';
-import { $, go, tap } from './shell.js?v=7de9d2c8';
-import { assetOf, directPeers, gdInfo, poolPrice, poolsBetween, reserves, simulateSwap } from './market.js?v=7de9d2c8';
-import { fiatOf, heldTokens, refreshBalances } from './tokens.js?v=7de9d2c8';
-import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=7de9d2c8';
-import { S } from './state.js?v=7de9d2c8';
+import { amt, fmt, iconHTML, paintIcons, usd } from './chain.js?v=7e6220a6';
+import { $, go, tap } from './shell.js?v=7e6220a6';
+import { assetOf, directPeers, gdInfo, poolPrice, poolsBetween, reserves, simulateSwap } from './market.js?v=7e6220a6';
+import { fiatOf, heldTokens, refreshBalances } from './tokens.js?v=7e6220a6';
+import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=7e6220a6';
+import { S } from './state.js?v=7e6220a6';
 
 const LUNC = { sym: 'LUNC', denom: 'uluna', dec: 6, native: true };
 let FROM = LUNC, TO = null, TIMER = null, SEQ = 0;

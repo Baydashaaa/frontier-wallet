@@ -1,6 +1,6 @@
-import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=7de9d2c8';
-import { DEC, assetOf, cacheGet, cacheGetStale, cacheSet, graph, graphReady, mapLimit, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=7de9d2c8';
-import { $, go } from './shell.js?v=7de9d2c8';
+import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=7e6220a6';
+import { DEC, assetOf, cacheGet, cacheGetStale, cacheSet, graph, graphReady, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=7e6220a6';
+import { $, go } from './shell.js?v=7e6220a6';
 
 // keep=true means this contract is on the address's list, so it earns a row
 // even at zero. Only an unknown contract has to prove itself with a balance.
@@ -72,6 +72,8 @@ function forget(addr, contract){
   cacheSet('reg:' + addr, registry(addr).filter(c => c !== contract));
 }
 
+const keyOfRow = r => r.contract ? 'cw20:' + r.contract : 'native:' + r.denom;
+
 let PRICING = 0;
 async function priceRows(list, found, px){
   const mine = ++PRICING;
@@ -88,7 +90,12 @@ async function priceRows(list, found, px){
   // several hundred entries out of localStorage, and nothing can build the
   // graph between this line and the end of this pass anyway.
   const ready = graphReady();
-  const todo = found.filter(r => r.contract && !r.pool && !r.asking && !px[r.sym] &&
+  // An IBC denom has no contract, and the filter asked for one - so USDC, which
+  // the map prices in a single hop, was never even in the list. What decides is
+  // whether the market can be asked about it, not which shape of address it
+  // happens to have. uluna and uusd stay out: their price comes from the feed.
+  const todo = found.filter(r => (r.contract || (r.denom && r.denom.slice(0, 4) === 'ibc/')) &&
+    !r.pool && !r.asking && !px[r.sym] &&
     (!r.tried || (r.deferred && ready)));
   if (!todo.length) return;
   todo.forEach(r => { r.asking = true; r.deferred = false; });
@@ -96,7 +103,9 @@ async function priceRows(list, found, px){
   // What can be answered from a direct pool or a bonding curve, which is most
   // of any wallet. Drawn as soon as it is in, so the screen fills instead of
   // waiting on whichever token is slowest.
-  const quick = await mapLimit(todo, 10, r => poolPrice(r.contract, true).catch(() => null));
+  const quick = await mapLimit(todo, 10, r => (r.contract
+    ? poolPrice(r.contract, true)
+    : mapPrice(keyOfRow(r))).catch(() => null));
   // Recorded BEFORE the staleness check. An answer belongs to the row, not to
   // the pass that fetched it; discarding it because a newer pass had started
   // meant the newer pass repeated every request the first one had just paid
@@ -120,12 +129,26 @@ async function priceRows(list, found, px){
   // being slow.
   const rest = todo.filter(r => !r.pool);
   if (!rest.length) return;
-  if (!ready) {
-    rest.forEach(r => { r.deferred = true; });
-    return;
+
+  // Two hops, off the map, before anything is deferred. UST1 has no pool
+  // against LUNC at all - it trades against cUSTC - and that used to mean
+  // waiting for a sweep to build a graph. The map already knows both legs.
+  const hop = await mapLimit(rest, 4, r => mapPrice(keyOfRow(r)).catch(() => null));
+  rest.forEach((r, i) => { if (hop[i]) r.pool = hop[i]; });
+
+  // Whatever two hops could not reach is where the full graph would have been
+  // the only answer, and that is still not worth building while someone is
+  // looking at the screen.
+  const left = rest.filter(r => !r.pool);
+  if (left.length && !ready) {
+    left.forEach(r => { r.deferred = true; });
+  } else if (left.length) {
+    const slow = await mapLimit(left, 4, r => (r.contract
+      ? poolPrice(r.contract)
+      : Promise.resolve(null)).catch(() => null));
+    left.forEach((r, i) => { if (slow[i]) r.pool = slow[i]; });
   }
-  const slow = await mapLimit(rest, 4, r => poolPrice(r.contract).catch(() => null));
-  rest.forEach((r, i) => { if (slow[i]) r.pool = slow[i]; r.tried = true; r.asking = false; r.deferred = false; });
+  rest.forEach(r => { r.tried = true; r.asking = false; if (r.pool) r.deferred = false; });
   if (mine !== PRICING) return;
   renderTokens(list, found, px, LAST.hint);
 }
