@@ -4,12 +4,12 @@
 // пул сам умеет ответить, сколько отдаст за конкретную сумму, с учётом
 // проскальзывания и комиссии. Считать это самому - значит показать одно
 // число, а получить другое.
-import { amt, fmt, iconHTML, paintIcons, usd } from './chain.js?v=08b7c369';
-import { $, go, tap } from './shell.js?v=08b7c369';
-import { assetOf, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, poolPrice, poolsBetween, reserves, simulateSwap } from './market.js?v=08b7c369';
-import { fiatOf, heldTokens, refreshBalances } from './tokens.js?v=08b7c369';
-import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=08b7c369';
-import { S } from './state.js?v=08b7c369';
+import { amt, fmt, iconHTML, paintIcons, usd } from './chain.js?v=f8df9ee2';
+import { $, go, tap } from './shell.js?v=f8df9ee2';
+import { assetOf, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, poolsBetween, reserves, simulateSwap } from './market.js?v=f8df9ee2';
+import { fiatOf, heldTokens, refreshBalances } from './tokens.js?v=f8df9ee2';
+import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=f8df9ee2';
+import { S } from './state.js?v=f8df9ee2';
 
 const LUNC = { sym: 'LUNC', denom: 'uluna', dec: 6, native: true };
 let FROM = LUNC, TO = null, TIMER = null, SEQ = 0;
@@ -441,10 +441,17 @@ async function learnPrice(t){
   const own = fiatOf(Object.assign({}, t, { v: 1 }));
   if (own !== null) { PX[k] = own; paintUsd(); return; }
   PX[k] = null;                          // asked; a second miss costs nothing
-  if (!t.contract) return;
+  // Reserves, not a curve. poolPrice falls back to bondPrice when nothing
+  // trades against LUNC directly, and a bonding curve is not a market - it can
+  // sit for months at a price nobody has taken. USTR came back 2.4x its real
+  // value that way, under a figure the screen presented as what you get.
+  // mapPrice reads the pools themselves, one hop or two, and is the same
+  // arithmetic behind every number on the token list - so the two screens
+  // cannot disagree about what something is worth.
   const lunc = fiatOf({ sym: 'LUNC', v: 1 });
-  const p = await poolPrice(t.contract, true).catch(() => null);
-  if (!p || !p.inLunc || lunc === null) return;
+  if (lunc === null) return;
+  const p = await mapPrice(k).catch(() => null);
+  if (!p || !p.inLunc) return;
   PX[k] = p.inLunc * lunc;
   paintUsd();
 }
