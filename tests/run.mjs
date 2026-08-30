@@ -197,4 +197,8 @@ group('two hops: candidates are filtered before they are capped');
   ok('a usable neighbour is not lost behind unusable ones', ustr && ustr.depth > 500000);
 }
 
+// the signed message, in its own file because it is lifted from swap.js rather
+// than imported
+await import('./envelopes.mjs');
+
 report();

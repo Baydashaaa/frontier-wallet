@@ -15,6 +15,18 @@ found by taking a screenshot and reading a console log. The routing layer is
 pure arithmetic over data structures, so all of it could have been caught here
 instead.
 
+## What is covered
+
+`run.mjs` - the pricing and routing layer, against the real `market.js`.
+
+`envelopes.mjs` - the message that gets signed, for all three pool dialects.
+This is the only layer where being wrong costs money rather than credibility,
+and none of the three contracts publishes a schema: every shape here was read
+off real transactions. `swap.js` attaches DOM handlers on load, so rather than
+bring in a DOM, `envelope()` is lifted out of the shipped file by brace matching
+and run against stubs. Rename or rewrite it and these go red, which is the
+intent.
+
 ## Adding a case
 
 `fixture.mjs` is a small market: two exchanges, one published by the feed and
