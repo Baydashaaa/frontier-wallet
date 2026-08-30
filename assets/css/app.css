@@ -385,6 +385,26 @@ textarea{resize:none;min-height:110px;line-height:1.8}
   stroke-linecap:round;stroke-linejoin:round}
 .sw-flip:active{transform:translate(-50%,-50%) scale(.92)}
 .sw-detail{min-height:20px;margin:0 4px 14px;display:flex;flex-direction:column;gap:6px}
+
+/* The outcome, which used to look exactly like the quote it replaced. */
+.sw-result{display:flex;flex-direction:column;gap:8px;padding:14px;border-radius:14px;
+  background:var(--surface2);border:1px solid var(--border);
+  animation:sw-in .2s ease-out both}
+.sw-result.done{border-color:rgba(0,255,176,.35);
+  background:linear-gradient(180deg,rgba(0,255,176,.07),transparent 70%),var(--surface2)}
+.sw-result-top{display:flex;align-items:center;gap:10px;font-size:15px;color:#E8F0FF}
+.sw-result-top b{font-weight:600}
+.sw-tick{width:20px;height:20px;flex:none;fill:none;stroke:#00FFB0;stroke-width:2.5;
+  stroke-linecap:round;stroke-linejoin:round;
+  stroke-dasharray:26;stroke-dashoffset:26;animation:sw-draw .35s ease-out .05s forwards}
+.sw-result p{margin:0;font-size:13px;line-height:1.5;color:var(--muted)}
+.sw-result a{font-family:'Rajdhani',sans-serif;font-size:12px;letter-spacing:.04em;
+  color:var(--accent2);text-decoration:none;word-break:break-all}
+.sw-result a:hover{text-decoration:underline}
+@keyframes sw-draw{to{stroke-dashoffset:0}}
+@keyframes sw-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){
+  .sw-result{animation:none}.sw-tick{animation:none;stroke-dashoffset:0}}
 .sw-line{display:flex;justify-content:space-between;font-size:12px;color:var(--muted)}
 .sw-line b{font-family:'Rajdhani',sans-serif;font-weight:600;color:#E8F0FF}
 .sw-line.warn b{color:var(--gold)}

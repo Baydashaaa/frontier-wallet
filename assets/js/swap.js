@@ -4,12 +4,12 @@
 // пул сам умеет ответить, сколько отдаст за конкретную сумму, с учётом
 // проскальзывания и комиссии. Считать это самому - значит показать одно
 // число, а получить другое.
-import { THIN_LUNC, amt, fmt, iconHTML, paintIcons, usd } from './chain.js?v=88541693';
-import { $, go, tap } from './shell.js?v=88541693';
-import { assetOf, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, midsBetween, poolsBetween, reserves, simulateSwap } from './market.js?v=88541693';
-import { fiatOf, heldTokens, refreshBalances } from './tokens.js?v=88541693';
-import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=88541693';
-import { S } from './state.js?v=88541693';
+import { THIN_LUNC, amt, fmt, iconHTML, paintIcons, usd } from './chain.js?v=5fb3b1b7';
+import { $, go, tap } from './shell.js?v=5fb3b1b7';
+import { assetOf, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, midsBetween, poolsBetween, reserves, simulateSwap } from './market.js?v=5fb3b1b7';
+import { fiatOf, heldTokens, refreshBalances, remember } from './tokens.js?v=5fb3b1b7';
+import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=5fb3b1b7';
+import { S } from './state.js?v=5fb3b1b7';
 
 const LUNC = { sym: 'LUNC', denom: 'uluna', dec: 6, native: true };
 let FROM = LUNC, TO = null, TIMER = null, SEQ = 0;
@@ -366,6 +366,30 @@ function setPct(p){
 function pick(sym){
   if (sym === 'LUNC') return heldTokens().find(x => x.sym === 'LUNC' && x.denom) || LUNC;
   return heldTokens().find(x => x.sym === sym) || null;
+}
+
+/* A moment that says what happened.
+
+   The quote, the review, the signature and the outcome all used to be the same
+   row of small grey text in the same place, so the screen never changed shape
+   and nothing ever announced itself. This is the one place where it should:
+   a state, a sentence in plain words, and the hash as something you can open
+   rather than a truncated string to squint at. */
+function result(state, title, note, hash){
+  const box = $('#sw-detail');
+  const link = 'https://finder.terraclassic.community/columbus-5/tx/' + hash;
+  box.innerHTML =
+    '<div class="sw-result ' + state + '">' +
+      '<div class="sw-result-top">' +
+        (state === 'done'
+          ? '<svg viewBox="0 0 24 24" class="sw-tick"><path d="m4 12 5.5 5.5L20 7"/></svg>'
+          : '<span class="spin"></span>') +
+        '<b>' + title + '</b>' +
+      '</div>' +
+      '<p>' + note + '</p>' +
+      '<a href="' + link + '" target="_blank" rel="noopener">' +
+        hash.slice(0, 8) + '\u2026' + hash.slice(-6) + ' \u2197</a>' +
+    '</div>';
 }
 
 function detail(lines){
@@ -767,7 +791,7 @@ $('#sw-go').addEventListener('click', async () => {
     if (!PLAN) {
       // the review: the node runs the message and prices the gas, which is
       // also what proves the transaction was built correctly
-      b.textContent = 'Checking';
+      b.textContent = 'Checking with the node';
       const plan = steps();
       const est = await dryRunSwap(addrOf(), plan, S.MNEMONIC);
       PLAN = { steps: plan, est: est };
@@ -791,18 +815,34 @@ $('#sw-go').addEventListener('click', async () => {
         : 'Swap ' + FROM.sym + ' for ' + TO.sym, true);
     } else {
       b.textContent = 'Signing';
+      const bought = TO, spent = FROM, want = QUOTE.got, left = QUOTE.residue, mid = QUOTE.mid;
       const res = await sendSwap(addrOf(), PLAN.steps, S.MNEMONIC);
-      detail([{ k: 'Sent', v: res.hash.slice(0, 10) + '\u2026' },
-              { k: 'Status', v: 'waiting for a block' }]);
+
+      // Waiting is a state, not an absence of one. It used to look identical to
+      // the quote it replaced - the same small grey rows in the same place -
+      // and there was no moment where anything said it had worked.
+      result('sent', 'Sent to the chain', 'Waiting for it to be included in a block.',
+             res.hash);
       armGo('Sent', false);
+
       const done = await res.wait();
+
+      // What was just bought is not in the registry, so nothing would ask for
+      // its balance until the daily sweep came round. The wallet knows exactly
+      // what it just acquired.
+      remember(addrOf(), [bought.contract, mid && mid.contract]);
       // the node can answer with state from a block earlier than the one that
       // included this, so ask twice rather than show a stale number
       refreshBalances(true);
       setTimeout(function () { refreshBalances(true); }, 6000);
-      detail([{ k: 'Swap', v: done ? 'confirmed' : 'not seen yet, check Activity',
-                tone: done ? '' : 'warn' },
-              { k: 'Hash', v: res.hash.slice(0, 10) + '\u2026' }]);
+
+      result(done ? 'done' : 'sent',
+             done ? 'Swapped' : 'Sent, not seen yet',
+             done
+               ? 'You received ' + fmt(want) + ' ' + bought.sym +
+                 (left ? ', and ' + fmt(left) + ' ' + mid.sym + ' stayed behind as expected.' : '.')
+               : 'The chain has not shown it yet. Activity will have it once it lands.',
+             res.hash);
       QUOTE = null; PLAN = null;
       $('#sw-amt').value = '';
       $('#sw-out').textContent = '-';
