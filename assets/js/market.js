@@ -1,4 +1,4 @@
-import { EXTRA_PAIRS, FACTORIES, LCD, THIN_LUNC, amt, getJSON, smart } from './chain.js?v=3c749a0c';
+import { EXTRA_PAIRS, FACTORIES, LCD, THIN_LUNC, amt, getJSON, smart } from './chain.js?v=996645fb';
 
 /* ---------------- discovery and pricing ----------------
    The chain has no "which CW20 does this address hold" endpoint. Balances live
@@ -321,6 +321,12 @@ async function mapPrice(key){
   // computed at 6 is out by a factor of a trillion
   await cl8yList();
 
+  // What was tried and what it gave. Printed only when the answer is thin or
+  // missing, which is the only time anyone needs to know - and the only way to
+  // tell "this hub was never in the list" from "this hub had no route", which
+  // three rounds of reasoning failed to distinguish.
+  const trace = [];
+
   const viaLunc = await routeTo(key, LUNC_KEY);
   // A deep pool straight to LUNC ends the question; searching the hubs as well
   // would only spend reads to confirm what is already known.
@@ -328,19 +334,23 @@ async function mapPrice(key){
     return { inLunc: viaLunc.rate, depth: viaLunc.depth, hops: 1,
              route: viaLunc.route, legs: viaLunc.legs };
   }
+  trace.push('lunc=' + (viaLunc ? Math.round(viaLunc.depth) + '@' + viaLunc.hops + 'h' : 'none'));
 
   let best = viaLunc ? {
     rate: viaLunc.rate, depth: viaLunc.depth, hops: viaLunc.hops,
     route: viaLunc.route, via: viaLunc.via, legs: viaLunc.legs
   } : null;
 
-  for (const h of await hubs()) {
-    if (key === h.key) continue;
+  const list = await hubs();
+  trace.push('hubs=' + (list.length ? list.map(h => h.key.slice(0, 12)).join(',') : 'NONE'));
+
+  for (const h of list) {
+    if (key === h.key) { trace.push(h.key.slice(0, 12) + '=self'); continue; }
     // once something is good enough to trade against, a wider one changes
     // nothing on screen and costs a dozen more reads
-    if (best && best.depth >= THIN_LUNC) break;
+    if (best && best.depth >= THIN_LUNC) { trace.push('stopped-early'); break; }
     const r = await routeTo(key, h.key);
-    if (!r) continue;
+    if (!r) { trace.push(h.key.slice(0, 12) + '=no-route'); continue; }
     // converted into LUNC, depths included, so every candidate is judged on one
     // scale whichever base it reached
     const cand = {
@@ -351,7 +361,15 @@ async function mapPrice(key){
       via: r.via || h.key,
       legs: (r.legs || []).map(x => x * h.rate).concat([h.far])
     };
+    trace.push(h.key.slice(0, 12) + '=' + Math.round(cand.depth) + '@' + cand.hops + 'h');
     if (!best || cand.depth > best.depth) best = cand;
+  }
+
+  if (!best || best.depth < THIN_LUNC) {
+    console.info('[route]', key.slice(0, 18), trace.join(' | '),
+                 '| peers ow=' + directPeers(key).length,
+                 'graph=' + graphPeers(key).length,
+                 '| graphReady=' + graphReady());
   }
 
   if (!best) return null;
