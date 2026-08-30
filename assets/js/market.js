@@ -1,4 +1,4 @@
-import { EXTRA_PAIRS, FACTORIES, LCD, THIN_LUNC, amt, getJSON, smart } from './chain.js?v=5fb7db0e';
+import { EXTRA_PAIRS, FACTORIES, LCD, THIN_LUNC, amt, getJSON, smart } from './chain.js?v=2819b24f';
 
 /* ---------------- discovery and pricing ----------------
    The chain has no "which CW20 does this address hold" endpoint. Balances live
@@ -36,7 +36,12 @@ function assetOf(key){
    first two are free. */
 const LIST_V = (String(import.meta.url).split('?v=')[1] || '').split('&')[0];
 let LIST = null;
-async function cl8yList(){
+let LIST_P = null;
+function cl8yList(){
+  if (!LIST_P) LIST_P = loadList();
+  return LIST_P;
+}
+async function loadList(){
   if (LIST) return LIST;
   const hit = cacheGetStale('cl8y:' + LIST_V);
   if (hit) { LIST = hit; return LIST; }
@@ -235,26 +240,37 @@ const USTC_KEY = 'native:uusd';
    against LUNC, then cUSTC against USTC: cUSTC is a wrapper on USTC and the way
    in and out of everything CL8Y lists, so with it as a hub a token like USTR
    reaches a base in two hops (USTR, UST1, cUSTC) instead of needing three. */
-let HUBS;
-async function hubs(){
-  if (HUBS) return HUBS;
-  HUBS = [];
+/* The promise is what gets kept, not the list.
+   Holding the list meant assigning it empty before the first await, and an
+   empty array is truthy - so every caller that arrived during the build was
+   handed the empty one and went away thinking there were no hubs at all. These
+   callers are concurrent by design: both sides of a swap are priced at once and
+   the token list prices four at a time, so the racing caller was the common
+   case rather than the rare one. */
+let HUBS = null;
+function hubs(){
+  if (!HUBS) HUBS = buildHubs().catch(function () { HUBS = null; return []; });
+  return HUBS;
+}
+
+async function buildHubs(){
+  const out = [];
   const ustc = await deepestLeg(poolsBetween(USTC_KEY, LUNC_KEY), USTC_KEY, LUNC_KEY, 3);
-  if (!ustc) return HUBS;
-  HUBS.push({ key: USTC_KEY, rate: ustc.rate, far: ustc.far,
-              route: [{ pair: ustc.pair }] });
+  if (!ustc) return out;
+  out.push({ key: USTC_KEY, rate: ustc.rate, far: ustc.far,
+             route: [{ pair: ustc.pair }] });
 
   await cl8yList();
   const wrapped = LIST && Object.keys(LIST).filter(k => LIST[k].sym === 'cUSTC')[0];
-  if (!wrapped) return HUBS;
+  if (!wrapped) return out;
   const leg = await routeTo(wrapped, USTC_KEY);
-  if (!leg) return HUBS;
-  HUBS.push({ key: wrapped,
-              rate: leg.rate * ustc.rate,
-              // still limited by its own narrowest leg, crossing included
-              far: Math.min(leg.depth * ustc.rate, ustc.far),
-              route: leg.route.concat([{ pair: ustc.pair }]) });
-  return HUBS;
+  if (!leg) return out;
+  out.push({ key: wrapped,
+             rate: leg.rate * ustc.rate,
+             // still limited by its own narrowest leg, crossing included
+             far: Math.min(leg.depth * ustc.rate, ustc.far),
+             route: leg.route.concat([{ pair: ustc.pair }]) });
+  return out;
 }
 
 async function routeTo(key, base){
