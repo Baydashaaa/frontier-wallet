@@ -4,12 +4,12 @@
 // пул сам умеет ответить, сколько отдаст за конкретную сумму, с учётом
 // проскальзывания и комиссии. Считать это самому - значит показать одно
 // число, а получить другое.
-import { THIN_LUNC, amt, fmt, iconHTML, paintIcons, usd } from './chain.js?v=04347cb2';
-import { $, go, tap } from './shell.js?v=04347cb2';
-import { assetOf, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, midsBetween, poolsBetween, reserves, simulateSwap } from './market.js?v=04347cb2';
-import { fiatOf, heldTokens, refreshBalances, remember } from './tokens.js?v=04347cb2';
-import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=04347cb2';
-import { S } from './state.js?v=04347cb2';
+import { THIN_LUNC, amt, fmt, iconHTML, paintIcons, usd } from './chain.js?v=877fb438';
+import { $, go, tap } from './shell.js?v=877fb438';
+import { assetOf, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, midsBetween, poolsBetween, reserves, simulateSwap } from './market.js?v=877fb438';
+import { fiatOf, heldTokens, refreshBalances, remember } from './tokens.js?v=877fb438';
+import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=877fb438';
+import { S } from './state.js?v=877fb438';
 
 const LUNC = { sym: 'LUNC', denom: 'uluna', dec: 6, native: true };
 let FROM = LUNC, TO = null, TIMER = null, SEQ = 0;
@@ -402,15 +402,28 @@ function detail(lines){
 /* Ask every pool that holds the pair and keep the best answer.
    Pulled out of quote() because a two step swap asks this twice, once per leg,
    and the second leg is not the pair on screen. */
-async function bestPool(pools, offerKey, raw, refused){
+async function bestPool(pools, offerKey, raw, refused, label){
+  const seen = [];
   const got = (await Promise.all(pools.slice(0, 3).map(function (p) {
     return simulateSwap(p.pair, offerKey, raw, p.dex)
-      .then(function (x) { return { pair: p.pair, dialect: x.dialect, d: x }; })
+      .then(function (x) {
+        seen.push(p.pair.slice(0, 12) + '/' + x.dialect + '=' + x.return_amount);
+        return { pair: p.pair, dialect: x.dialect, d: x };
+      })
       .catch(function (e) {
-        refused.push(String(e && e.message ? e.message : e));
+        const why = String(e && e.message ? e.message : e);
+        seen.push(p.pair.slice(0, 12) + '/' + (p.dex || '?') + '!' + why.slice(0, 40));
+        refused.push(why);
         return null;
       });
   }))).filter(function (q) { return q && Number(q.d.return_amount) > 0; });
+  // Every pool answered and none of them qualified: say what was asked and what
+  // came back, because the answer to "why is there no quote" is in there and
+  // nowhere else.
+  if (!got.length) {
+    console.info('[leg]', label || '?', 'offer', offerKey.slice(0, 18), raw,
+                 '->', seen.join(' | ') || 'no pools');
+  }
   got.sort(function (a, b) { return Number(b.d.return_amount) - Number(a.d.return_amount); });
   return { best: got[0] || null, tried: pools.length, answered: got.length, all: got };
 }
@@ -449,7 +462,7 @@ async function quoteHop(mids, raw, refused){
     if (!mid) { trace.push(m.key.slice(0, 14) + ':unnamed'); continue; }
     const dMid = decOf(mid);
 
-    const one = await bestPool(m.first, keyOf(FROM), raw, refused);
+    const one = await bestPool(m.first, keyOf(FROM), raw, refused, 'leg1 to ' + mid.sym);
     asked += one.tried;
     if (!one.best) { trace.push(mid.sym + ':leg1 none of ' + one.tried); continue; }
 
@@ -458,7 +471,7 @@ async function quoteHop(mids, raw, refused){
       trace.push(mid.sym + ':leg1 returned ' + one.best.d.return_amount); continue;
     }
 
-    const two = await bestPool(m.second, m.key, min1, refused);
+    const two = await bestPool(m.second, m.key, min1, refused, 'leg2 from ' + mid.sym);
     asked += two.tried;
     if (!two.best) { trace.push(mid.sym + ':leg2 none of ' + two.tried); continue; }
 
@@ -523,7 +536,7 @@ async function quote(){
     let lines, pair, pct, hop = null, direct = null;
 
     if (pools.length) {
-      direct = await bestPool(pools, keyOf(FROM), raw, refused);
+      direct = await bestPool(pools, keyOf(FROM), raw, refused, 'direct');
       if (my !== SEQ) return;
       if (!direct.best) throw new Error(refused[0] || 'no pool would quote this amount');
       pair = direct.best.pair;
