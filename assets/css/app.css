@@ -500,7 +500,7 @@ textarea{resize:none;min-height:110px;line-height:1.8}
 .sw-item-s{flex:1;min-width:0;display:flex;align-items:center;gap:7px;
   font-size:14px;font-weight:600;letter-spacing:.03em}
 .sw-hop{flex:none;white-space:nowrap;padding:1px 6px;border-radius:6px;
-  font-family:'Rajdhani',sans-serif;font-style:normal;font-size:10px;letter-spacing:.06em;
+  font-family:'Rajdhani',sans-serif;font-weight:500;font-size:10px;letter-spacing:.06em;
   color:var(--muted);background:var(--surface2);border:1px solid var(--border);
   vertical-align:middle}
 .sw-item-r{display:flex;flex-direction:column;align-items:flex-end;gap:2px;min-width:0}
