@@ -3,3 +3,4 @@ postEvent
 probe*.py
 patch*.py
 add-tests.py
+add-*.py
