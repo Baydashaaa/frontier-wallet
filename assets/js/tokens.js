@@ -1,6 +1,6 @@
-import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=877fb438';
-import { DEC, cacheGet, cacheGetStale, cacheSet, cl8yList, graph, graphReady, knownAsset, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=877fb438';
-import { $, go } from './shell.js?v=877fb438';
+import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=24294c0b';
+import { DEC, cacheGet, cacheGetStale, cacheSet, cl8yList, graph, graphReady, knownAsset, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=24294c0b';
+import { $, go } from './shell.js?v=24294c0b';
 
 // keep=true means this contract is on the address's list, so it earns a row
 // even at zero. Only an unknown contract has to prove itself with a balance.
@@ -45,7 +45,10 @@ async function tokenRow(c, addr, known, keep){
     if (!(v > 0) && !keep) return null;
     // No pricing here. A balance is the one read that has to happen; a price is
     // many, and making the row wait on them is what left the screen empty.
-    return { sym: d.symbol, v: v, note: d.name, logo: fixed.logo, pool: null, contract: c };
+    // dec travels with the row. It was used to compute v and then thrown away,
+    // and every reader downstream had to assume six.
+    return { sym: d.symbol, v: v, dec: d.decimals, note: d.name,
+             logo: fixed.logo, pool: null, contract: c };
   } catch (e) { return null; }   // a dead contract must not take the screen down
 }
 

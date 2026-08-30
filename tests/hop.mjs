@@ -64,6 +64,25 @@ function run(fromKey, toKey){
   return { api: api, FROM: FROM, TO: TO };
 }
 
+group('decimals reach the amount that is offered');
+{
+  // The bug that made an eighteen decimal token unsellable: a wallet row is
+  // built from a balance query and used to have no decimals on it at all, so
+  // every reader downstream assumed six. Six is right for almost everything
+  // here, which is why it went unnoticed until it was not.
+  const api = new Function('DEC', 'keyOf', [lift(swap, 'function decOf('),
+                                            'return { decOf };'].join('\n'))(
+    mod.DEC, k => (k.contract ? 'cw20:' + k.contract : 'native:' + k.denom));
+
+  ok('a row that carries its decimals is believed',
+     api.decOf({ contract: 'terra1cl8y', dec: 18 }) === 18);
+  ok('a row without them falls back on what the map recorded, not on six',
+     api.decOf({ contract: A.CL8Y.slice(5) }) === 18,
+     String(api.decOf({ contract: A.CL8Y.slice(5) })));
+  ok('and only guesses when nothing knows',
+     api.decOf({ contract: 'terra1neverseen' }) === 6);
+}
+
 group('a two step quote');
 {
   const { api, FROM, TO } = run(A.UST1, A.CL8Y);

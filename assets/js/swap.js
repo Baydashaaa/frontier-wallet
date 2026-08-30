@@ -4,12 +4,12 @@
 // пул сам умеет ответить, сколько отдаст за конкретную сумму, с учётом
 // проскальзывания и комиссии. Считать это самому - значит показать одно
 // число, а получить другое.
-import { THIN_LUNC, amt, fmt, iconHTML, paintIcons, usd } from './chain.js?v=877fb438';
-import { $, go, tap } from './shell.js?v=877fb438';
-import { assetOf, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, midsBetween, poolsBetween, reserves, simulateSwap } from './market.js?v=877fb438';
-import { fiatOf, heldTokens, refreshBalances, remember } from './tokens.js?v=877fb438';
-import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=877fb438';
-import { S } from './state.js?v=877fb438';
+import { THIN_LUNC, amt, fmt, iconHTML, paintIcons, usd } from './chain.js?v=24294c0b';
+import { $, go, tap } from './shell.js?v=24294c0b';
+import { DEC, assetOf, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, midsBetween, poolsBetween, reserves, simulateSwap } from './market.js?v=24294c0b';
+import { fiatOf, heldTokens, refreshBalances, remember } from './tokens.js?v=24294c0b';
+import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=24294c0b';
+import { S } from './state.js?v=24294c0b';
 
 const LUNC = { sym: 'LUNC', denom: 'uluna', dec: 6, native: true };
 let FROM = LUNC, TO = null, TIMER = null, SEQ = 0;
@@ -141,9 +141,17 @@ function destinations(t){
   return out;
 }
 
+/* Six is the answer for almost every token here, which is exactly what makes
+   it a dangerous default: it is right often enough that being wrong goes
+   unnoticed until it costs a trade. Asked in order - what the row says, then
+   what the market map recorded, and only then the guess. */
 function decOf(t){
   const d = Number(t && t.dec);
-  return isFinite(d) && d > 0 ? d : 6;
+  if (isFinite(d) && d > 0) return d;
+  const k = keyOf(t);
+  const known = k ? Number(DEC[k]) : NaN;
+  if (isFinite(known) && known > 0) return known;
+  return 6;
 }
 
 // Gas is paid in LUNC, so spending the whole balance leaves nothing to pay
