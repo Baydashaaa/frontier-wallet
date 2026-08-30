@@ -4,12 +4,12 @@
 // пул сам умеет ответить, сколько отдаст за конкретную сумму, с учётом
 // проскальзывания и комиссии. Считать это самому - значит показать одно
 // число, а получить другое.
-import { THIN_LUNC, amt, fmt, iconHTML, paintIcons, usd } from './chain.js?v=030b5996';
-import { $, go, tap } from './shell.js?v=030b5996';
-import { assetOf, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, poolsBetween, reserves, simulateSwap } from './market.js?v=030b5996';
-import { fiatOf, heldTokens, refreshBalances } from './tokens.js?v=030b5996';
-import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=030b5996';
-import { S } from './state.js?v=030b5996';
+import { THIN_LUNC, amt, fmt, iconHTML, paintIcons, usd } from './chain.js?v=83eff145';
+import { $, go, tap } from './shell.js?v=83eff145';
+import { assetOf, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, midsBetween, poolsBetween, reserves, simulateSwap } from './market.js?v=83eff145';
+import { fiatOf, heldTokens, refreshBalances } from './tokens.js?v=83eff145';
+import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=83eff145';
+import { S } from './state.js?v=83eff145';
 
 const LUNC = { sym: 'LUNC', denom: 'uluna', dec: 6, native: true };
 let FROM = LUNC, TO = null, TIMER = null, SEQ = 0;
@@ -119,6 +119,28 @@ function peersOf(t){
 }
 const swappable = t => !!t && !LEGACY(t.denom) && allPeersOf(t).length > 0;
 
+/* Everywhere the trade can end up: assets sharing a pool with this one, and
+   then assets sharing a pool with those. The second kind is what makes the
+   whole CL8Y cluster reachable - UST1 and CL8Y have no pool between them, and
+   their own exchange routes that trade through cUSTC rather than refusing it.
+   Direct destinations come first; a hop costs a second pool's fee and leaves a
+   little of the middle token behind, so it is the fallback, not the default. */
+function destinations(t){
+  const self = keyOf(t);
+  const seen = {}, out = [];
+  const near = peersOf(t);
+  for (const p of near) { seen[p.key] = 1; out.push(Object.assign({ hops: 1 }, p)); }
+  for (const m of near.slice(0, 10)) {
+    for (const q of directPeers(m.key).concat(graphPeers(m.key))) {
+      if (q.key === self || seen[q.key] || LEGACY(q.key.slice(7))) continue;
+      if (!knownAsset(q.key) && !heldTokens().some(r => keyOf(r) === q.key)) continue;
+      seen[q.key] = 1;
+      out.push(Object.assign({}, q, { hops: 2, via: m.key }));
+    }
+  }
+  return out;
+}
+
 function decOf(t){
   const d = Number(t && t.dec);
   return isFinite(d) && d > 0 ? d : 6;
@@ -153,10 +175,19 @@ function face(el, t){
 // pair against LUNC. Read from the pool itself it holds for any pair, and it is
 // one query per pool, kept for as long as the screen is open.
 const DEPTH = {};
-function comfortOf(){
+function firstLeg(){
   const pools = poolsBetween(keyOf(FROM), keyOf(TO));
-  if (!pools.length) return 0;
-  const d = DEPTH[pools[0].pair];
+  if (pools.length) return pools[0].pair;
+  const mids = midsBetween(keyOf(FROM), keyOf(TO));
+  // for a hop it is the first pool the trade enters that sets the comfortable
+  // size; what happens after it is smaller by definition
+  return mids.length ? mids[0].first[0].pair : null;
+}
+
+function comfortOf(){
+  const pair = firstLeg();
+  if (!pair) return 0;
+  const d = DEPTH[pair];
   return d && d > 0 ? d * 0.01 : 0;
 }
 
@@ -165,11 +196,8 @@ function comfortOf(){
 // for an amount is not always the biggest - and reading the wrong one is why
 // the depth line sat on "reading" forever.
 async function learnDepth(pair){
-  if (!pair) {
-    const pools = poolsBetween(keyOf(FROM), keyOf(TO));
-    if (!pools.length) return;
-    pair = pools[0].pair;
-  }
+  if (!pair) pair = firstLeg();
+  if (!pair) return;
   if (DEPTH[pair] !== undefined) return;
   DEPTH[pair] = 0;                       // asked, so the next paint does not re-ask
   const res = await reserves(pair).catch(() => null);
@@ -246,7 +274,10 @@ function sheetRows(side){
     if (lunc && !mine.some(t => t.sym === 'LUNC')) mine.unshift(lunc);
     return mine;
   }
-  return peersOf(FROM).map(p => tokenFor(p.key)).filter(Boolean);
+  return destinations(FROM).map(function (p) {
+    const t = tokenFor(p.key);
+    return t ? Object.assign({}, t, { hops: p.hops, via: p.via }) : null;
+  }).filter(Boolean);
 }
 
 // Rows the sheet could not name yet. Asked for once, all at once, and the sheet
@@ -289,7 +320,8 @@ function drawSheet(){
   list.innerHTML = all.length ? all.map(function (t) {
     const f = fiatOf(t);
     return '<button class="sw-item" type="button" data-k="' + keyOf(t) + '">' +
-      iconHTML(t) + '<span class="sw-item-s">' + t.sym + '</span>' +
+      iconHTML(t) + '<span class="sw-item-s">' + t.sym +
+      (t.hops === 2 ? '<i class="sw-hop">2 steps</i>' : '') + '</span>' +
       '<span class="sw-item-r">' +
         '<span class="sw-item-v">' + ((t.v || 0) > 0 ? fmt(t.v) : '') + '</span>' +
         '<span class="sw-item-u">' + (f !== null && f > 0 ? usd(f) : '') + '</span>' +
@@ -343,6 +375,84 @@ function detail(lines){
   }).join('');
 }
 
+/* Ask every pool that holds the pair and keep the best answer.
+   Pulled out of quote() because a two step swap asks this twice, once per leg,
+   and the second leg is not the pair on screen. */
+async function bestPool(pools, offerKey, raw, refused){
+  const got = (await Promise.all(pools.slice(0, 3).map(function (p) {
+    return simulateSwap(p.pair, offerKey, raw, p.dex)
+      .then(function (x) { return { pair: p.pair, dialect: x.dialect, d: x }; })
+      .catch(function (e) {
+        refused.push(String(e && e.message ? e.message : e));
+        return null;
+      });
+  }))).filter(function (q) { return q && Number(q.d.return_amount) > 0; });
+  got.sort(function (a, b) { return Number(b.d.return_amount) - Number(a.d.return_amount); });
+  return { best: got[0] || null, tried: pools.length, answered: got.length, all: got };
+}
+
+const legCost = (d, dec) => {
+  const out = Number(d.return_amount) / Math.pow(10, dec);
+  const spread = Number(d.spread_amount) / Math.pow(10, dec);
+  const fee = Number(d.commission_amount) / Math.pow(10, dec);
+  const whole = out + spread + fee;
+  return { out: out, spread: spread, fee: fee,
+           impact: whole > 0 ? (spread / whole) * 100 : 0,
+           feePct: out + fee > 0 ? (fee / (out + fee)) * 100 : 0 };
+};
+
+/* Two pools, one transaction.
+
+   The second message has to name its amount when the transaction is signed, and
+   what the first message will actually deliver is not known until it runs. So
+   the second one spends the first one's guaranteed minimum: it can never be
+   short, the transaction never half-executes, and whatever the first leg
+   delivered above that minimum stays in the wallet as the middle token. That
+   residue is bounded by the slippage setting and is shown on screen before
+   anything is signed - it is a condition of the trade, not a surprise.
+
+   The quote for the second leg is taken on the minimum, not on the expectation,
+   so the number on screen is what the trade actually yields rather than a best
+   case nobody will get. */
+async function quoteHop(mids, raw, refused){
+  let best = null, asked = 0;
+  for (const m of mids.slice(0, 2)) {
+    const mid = tokenFor(m.key);
+    if (!mid) continue;
+    const dMid = decOf(mid);
+
+    const one = await bestPool(m.first, keyOf(FROM), raw, refused);
+    asked += one.tried;
+    if (!one.best) continue;
+
+    const min1 = String(Math.floor(Number(one.best.d.return_amount) * (1 - SLIP)));
+    if (!(Number(min1) > 0)) continue;
+
+    const two = await bestPool(m.second, m.key, min1, refused);
+    asked += two.tried;
+    if (!two.best) continue;
+
+    const outRaw = Number(two.best.d.return_amount);
+    if (!(outRaw > 0)) continue;
+    if (best && outRaw <= Number(best.returnRaw)) continue;
+
+    best = {
+      mid: mid, dMid: dMid, asked: asked,
+      residue: (Number(one.best.d.return_amount) - Number(min1)) / Math.pow(10, dMid),
+      one: legCost(one.best.d, dMid),
+      two: legCost(two.best.d, decOf(TO)),
+      returnRaw: two.best.d.return_amount,
+      legs: [
+        { pair: one.best.pair, dialect: one.best.dialect,
+          offerRaw: raw, returnRaw: one.best.d.return_amount },
+        { pair: two.best.pair, dialect: two.best.dialect,
+          offerRaw: min1, returnRaw: two.best.d.return_amount }
+      ]
+    };
+  }
+  return best;
+}
+
 async function quote(){
   const my = ++SEQ;
   QUOTE = null; PLAN = null; DETAIL = null; armGo('Enter an amount', false);
@@ -350,18 +460,20 @@ async function quote(){
   const v = parseFloat(String($('#sw-amt').value).replace(',', '.'));
   const out = $('#sw-out');
 
-  // One pool, both sides. LUNC used to be required on one of them because the
-  // route came from the token list, which only ever prices against LUNC - but
-  // a pool holding JURIS and TERRA trades them in one message like any other.
   if (!TO || keyOf(TO) === keyOf(FROM)) {
     out.textContent = '-'; out.classList.add('dim');
     detail([{ k: 'Route', v: 'pick two different assets', tone: 'warn' }]);
     return;
   }
+
+  // A pool holding both is always preferred: one message, one fee, nothing left
+  // behind. Only when there is none does the trade go through a middle asset.
   const pools = poolsBetween(keyOf(FROM), keyOf(TO));
-  if (!pools.length) { out.textContent = '-'; out.classList.add('dim');
-    detail([{ k: 'Route', v: 'no pool holds both', tone: 'bad' }]); return; }
-  let pair = pools[0].pair;
+  const mids = pools.length ? [] : midsBetween(keyOf(FROM), keyOf(TO));
+  if (!pools.length && !mids.length) {
+    out.textContent = '-'; out.classList.add('dim');
+    detail([{ k: 'Route', v: 'nothing connects these two', tone: 'bad' }]); return;
+  }
   if (!isFinite(v) || v <= 0) { out.textContent = '-'; out.classList.add('dim'); detail([]); return; }
 
   out.textContent = 'quoting'; out.classList.add('dim');
@@ -371,67 +483,83 @@ async function quote(){
   try {
     // A pool that will not answer is one fewer option, not an error - but when
     // every one of them refuses, what they said is the only thing that explains
-    // why, and it used to be thrown away. Two rounds of guessing a contract's
-    // dialect went into finding that out by hand.
+    // why, and it used to be thrown away.
     const refused = [];
-    const quotes = (await Promise.all(pools.map(function (p) {
-      return simulateSwap(p.pair, keyOf(FROM), raw, p.dex)
-        .then(function (x) { return { pair: p.pair, dialect: x.dialect, d: x }; })
-        .catch(function (e) {
-          refused.push(String(e && e.message ? e.message : e));
-          return null;
-        });
-    }))).filter(function (q) { return q && Number(q.d.return_amount) > 0; });
-    if (my !== SEQ) return;                       // ответ на устаревший ввод
-    if (!quotes.length) throw new Error(refused[0] || 'no pool would quote this amount');
-    quotes.sort(function (a, b) { return Number(b.d.return_amount) - Number(a.d.return_amount); });
-    pair = quotes[0].pair;
-    const dialect = quotes[0].dialect;
-    const d = quotes[0].d;
-    learnDepth(pair);       // the chosen pool, which may not be the deepest one
-    // What the second best would have given - the whole point of asking more
-    // than one pool. But only pools that could actually have taken the trade
-    // count as second best: a pool holding a few hundred LUNC returns almost
-    // nothing, and the resulting "better by 327807%" reads as a broken screen
-    // rather than as the dust it describes.
-    const best = Number(d.return_amount);
-    const rival = quotes.length > 1 && Number(quotes[1].d.return_amount) > best / 2
-      ? Number(quotes[1].d.return_amount)
-      : 0;
-    const edge = rival ? (best / rival - 1) * 100 : null;
-    const got = amt(d.return_amount, dTo);
-    const spread = Number(d.spread_amount) / Math.pow(10, dTo);
-    const fee = Number(d.commission_amount) / Math.pow(10, dTo);
-    const pct = got > 0 ? (spread / (got + spread + fee)) * 100 : 0;
+    let lines, pair, pct, hop = null, direct = null;
 
-    out.textContent = fmt(got);
+    if (pools.length) {
+      direct = await bestPool(pools, keyOf(FROM), raw, refused);
+      if (my !== SEQ) return;
+      if (!direct.best) throw new Error(refused[0] || 'no pool would quote this amount');
+      pair = direct.best.pair;
+      const c = legCost(direct.best.d, dTo);
+      pct = c.impact;
+      learnDepth(pair);
+      // What the second best would have given - the whole point of asking more
+      // than one pool. Only pools that could actually have taken the trade
+      // count: a pool holding a few hundred LUNC returns almost nothing, and
+      // "better by 327807%" reads as a broken screen rather than as dust.
+      const b = Number(direct.best.d.return_amount);
+      const rival = direct.all.length > 1 && Number(direct.all[1].d.return_amount) > b / 2
+        ? Number(direct.all[1].d.return_amount) : 0;
+      const edge = rival ? (b / rival - 1) * 100 : null;
+
+      out.textContent = fmt(c.out);
+      QUOTE = { pair: pair, dialect: direct.best.dialect, offerRaw: raw,
+                returnRaw: String(direct.best.d.return_amount),
+                got: c.out, dTo: dTo, pct: pct, hops: 1,
+                legs: [{ pair: pair, dialect: direct.best.dialect,
+                         offerRaw: raw, returnRaw: String(direct.best.d.return_amount) }] };
+      lines = [
+        { k: 'Rate', v: '1 ' + FROM.sym + ' = ' + fmt(c.out / v) + ' ' + TO.sym },
+        { k: 'Price impact', v: pct.toFixed(2) + '%',
+          tone: pct >= 5 ? 'bad' : pct >= 1 ? 'warn' : '' },
+        // a percentage is an argument; the tokens it costs is a fact
+        { k: 'Slippage costs you', v: fmt(c.spread) + ' ' + TO.sym,
+          tone: pct >= 5 ? 'bad' : pct >= 1 ? 'warn' : '' },
+        { k: 'Pool fee', v: fmt(c.fee) + ' ' + TO.sym +
+          (c.feePct > 0 ? ' \u00b7 ' + c.feePct.toFixed(2) + '%' : ''),
+          tone: c.feePct > 1 ? 'warn' : '' },
+        { k: 'Pool depth', v: DEPTH[pair] ? fmt(DEPTH[pair]) + ' ' + FROM.sym : 'reading',
+          tone: DEPTH[pair] && DEPTH[pair] < v * 20 ? 'warn' : '' },
+        { k: 'Pools asked', v: direct.answered + ' of ' + direct.tried +
+          (edge === null
+            ? (direct.answered > 1 ? ', the rest too thin to matter' : '')
+            : edge > 0.01 ? ', best by ' + edge.toFixed(2) + '%' : '') }
+      ];
+    } else {
+      hop = await quoteHop(mids, raw, refused);
+      if (my !== SEQ) return;
+      if (!hop) throw new Error(refused[0] || 'no route would quote this amount');
+      pair = hop.legs[0].pair;
+      pct = hop.one.impact + hop.two.impact;
+      learnDepth(pair);
+
+      out.textContent = fmt(hop.two.out);
+      QUOTE = { pair: pair, dialect: hop.legs[1].dialect, offerRaw: raw,
+                returnRaw: hop.returnRaw, got: hop.two.out, dTo: dTo, pct: pct,
+                hops: 2, mid: hop.mid, residue: hop.residue, legs: hop.legs };
+      lines = [
+        { k: 'Route', v: FROM.sym + ' \u2192 ' + hop.mid.sym + ' \u2192 ' + TO.sym },
+        { k: 'Rate', v: '1 ' + FROM.sym + ' = ' + fmt(hop.two.out / v) + ' ' + TO.sym },
+        { k: 'Price impact', v: pct.toFixed(2) + '% over two pools',
+          tone: pct >= 5 ? 'bad' : pct >= 1 ? 'warn' : '' },
+        { k: 'Pool fees', v: hop.one.feePct.toFixed(2) + '% then ' + hop.two.feePct.toFixed(2) + '%',
+          tone: hop.one.feePct + hop.two.feePct > 2 ? 'warn' : '' },
+        // the whole reason a two step trade is not a one step trade
+        { k: 'Leaves in your wallet', v: fmt(hop.residue) + ' ' + hop.mid.sym,
+          tone: 'warn' },
+        { k: 'Pool depth', v: DEPTH[pair] ? fmt(DEPTH[pair]) + ' ' + FROM.sym : 'reading',
+          tone: DEPTH[pair] && DEPTH[pair] < v * 20 ? 'warn' : '' }
+      ];
+    }
+
     out.classList.remove('dim');
-    QUOTE = { pair: pair, dialect: dialect, offerRaw: raw, returnRaw: String(d.return_amount),
-              got: got, dTo: dTo, pct: pct };
     paintUsd();
     // an expensive trade should not be one tap away from an ordinary one
     armGo(!S.MNEMONIC ? 'Watch only, nothing can be signed'
           : pct >= 5 ? 'This costs ' + pct.toFixed(1) + '%, check it'
           : 'Check what this would cost', !!S.MNEMONIC);
-    const lines = [
-      { k: 'Rate', v: '1 ' + FROM.sym + ' = ' + fmt(got / v) + ' ' + TO.sym },
-      { k: 'Price impact', v: pct.toFixed(2) + '%',
-        tone: pct >= 5 ? 'bad' : pct >= 1 ? 'warn' : '' },
-      // a percentage is an argument; the tokens it costs is a fact
-      { k: 'Slippage costs you', v: fmt(spread) + ' ' + TO.sym,
-        tone: pct >= 5 ? 'bad' : pct >= 1 ? 'warn' : '' },
-      // as a share of what the trade was worth before it was taken. CL8Y sits
-      // at 1.8% against the usual 0.3, and the number in tokens hides that
-      { k: 'Pool fee', v: fmt(fee) + ' ' + TO.sym +
-        (got + fee > 0 ? ' \u00b7 ' + (fee / (got + fee) * 100).toFixed(2) + '%' : ''),
-        tone: got + fee > 0 && fee / (got + fee) > 0.01 ? 'warn' : '' },
-      { k: 'Pool depth', v: DEPTH[pair] ? fmt(DEPTH[pair]) + ' ' + FROM.sym : 'reading',
-        tone: DEPTH[pair] && DEPTH[pair] < v * 20 ? 'warn' : '' },
-      { k: 'Pools asked', v: quotes.length + ' of ' + pools.length +
-        (edge === null
-          ? (quotes.length > 1 ? ', the rest too thin to matter' : '')
-          : edge > 0.01 ? ', best by ' + edge.toFixed(2) + '%' : '') }
-    ];
     DETAIL = { pair: pair, sym: FROM.sym, size: v, lines: lines };
     detail(lines);
   } catch (e) {
@@ -441,6 +569,15 @@ async function quote(){
     detail([{ k: 'Pool', v: why.slice(0, 90), tone: 'bad' }]);
     console.error('[swap]', e);
   }
+}
+
+/* The messages, in order. One for a direct trade, two for a hop - and the
+   second is offered by the middle token, not by the one on screen. */
+function steps(){
+  if (!QUOTE || !QUOTE.legs) return [];
+  return QUOTE.legs.map(function (leg, i) {
+    return envelope(i === 0 ? FROM : QUOTE.mid, leg);
+  });
 }
 
 /* What one unit is worth, in dollars.
@@ -580,37 +717,42 @@ if (btn) btn.addEventListener('click', () => { fillPickers(); go('swap'); });
 // and how far it may drift, while Garuda is told the smallest number of tokens
 // that may come back. The second is the stricter promise, and the one the pool
 // itself enforces rather than recomputes.
-function envelope(){
-  const gd = QUOTE.dialect === 'gd';
-  const cl = QUOTE.dialect === 'cl';
+/* Takes the leg rather than reading the globals, because a two step swap has
+   two of them and only the first is the pair on screen. Called with nothing it
+   behaves as before, which is what the direct case still wants. */
+function envelope(from, q){
+  from = from || FROM;
+  q = q || QUOTE;
+  const gd = q.dialect === 'gd';
+  const cl = q.dialect === 'cl';
   // a floor, so rounding never pushes the guard above what was quoted
-  const floor = String(Math.floor(Number(QUOTE.returnRaw) * (1 - SLIP)));
+  const floor = String(Math.floor(Number(q.returnRaw) * (1 - SLIP)));
   const guard = gd
-    ? { offer_amount: QUOTE.offerRaw, min_receive: floor, deadline: Date.now() + 120000 }
+    ? { offer_amount: q.offerRaw, min_receive: floor, deadline: Date.now() + 120000 }
     : cl
     // seconds, not milliseconds - and no belief_price, which appears in none of
     // the trades this contract has taken
     ? { max_spread: String(SLIP), deadline: Math.floor(Date.now() / 1000) + 120 }
-    : { belief_price: (Number(QUOTE.offerRaw) / Number(QUOTE.returnRaw)).toFixed(18),
+    : { belief_price: (Number(q.offerRaw) / Number(q.returnRaw)).toFixed(18),
         max_spread: String(SLIP) };
 
-  if (FROM.denom) {
+  if (from.denom) {
     const offer = gd
-      ? { offer_asset: gdInfo(keyOf(FROM)) }
-      : { offer_asset: { info: { native_token: { denom: FROM.denom } }, amount: QUOTE.offerRaw } };
+      ? { offer_asset: gdInfo(keyOf(from)) }
+      : { offer_asset: { info: { native_token: { denom: from.denom } }, amount: q.offerRaw } };
     return {
-      contract: QUOTE.pair,
-      funds: [{ denom: FROM.denom, amount: QUOTE.offerRaw }],
+      contract: q.pair,
+      funds: [{ denom: from.denom, amount: q.offerRaw }],
       msg: { swap: Object.assign({}, offer, guard) }
     };
   }
   const hook = gd
-    ? { swap: Object.assign({ offer_asset: gdInfo(keyOf(FROM)) }, guard) }
+    ? { swap: Object.assign({ offer_asset: gdInfo(keyOf(from)) }, guard) }
     : { swap: guard };
   return {
-    contract: FROM.contract,
+    contract: from.contract,
     funds: [],
-    msg: { send: { contract: QUOTE.pair, amount: QUOTE.offerRaw,
+    msg: { send: { contract: q.pair, amount: q.offerRaw,
                    msg: btoa(JSON.stringify(hook)) } }
   };
 }
@@ -626,23 +768,30 @@ $('#sw-go').addEventListener('click', async () => {
       // the review: the node runs the message and prices the gas, which is
       // also what proves the transaction was built correctly
       b.textContent = 'Checking';
-      const env = envelope();
-      const est = await dryRunSwap(addrOf(), env.contract, env.msg, env.funds, S.MNEMONIC);
-      PLAN = { env: env, est: est };
+      const plan = steps();
+      const est = await dryRunSwap(addrOf(), plan, S.MNEMONIC);
+      PLAN = { steps: plan, est: est };
       const min = QUOTE.got * (1 - SLIP);
-      detail([
+      const review = [
         { k: 'You receive', v: fmt(QUOTE.got) + ' ' + TO.sym },
-        { k: 'At worst', v: fmt(min) + ' ' + TO.sym, tone: 'warn' },
-        { k: 'Network fee', v: fmt(est.gasFee / 1e6) + ' LUNC' },
-        { k: 'Gas', v: String(est.gas) }
-      ]);
+        { k: 'At worst', v: fmt(min) + ' ' + TO.sym, tone: 'warn' }
+      ];
+      if (QUOTE.hops === 2) {
+        // both messages commit together or neither does, and the middle token
+        // exists only in between - except for the part that stays
+        review.push({ k: 'Steps', v: '2, in one transaction' });
+        review.push({ k: 'Leaves in your wallet',
+                      v: fmt(QUOTE.residue) + ' ' + QUOTE.mid.sym, tone: 'warn' });
+      }
+      review.push({ k: 'Network fee', v: fmt(est.gasFee / 1e6) + ' LUNC' });
+      review.push({ k: 'Gas', v: String(est.gas) });
+      detail(review);
       armGo(QUOTE && PLAN && QUOTE.pct >= 5
         ? 'Swap anyway, losing ' + QUOTE.pct.toFixed(1) + '%'
         : 'Swap ' + FROM.sym + ' for ' + TO.sym, true);
     } else {
       b.textContent = 'Signing';
-      const env = PLAN.env;
-      const res = await sendSwap(addrOf(), env.contract, env.msg, env.funds, S.MNEMONIC);
+      const res = await sendSwap(addrOf(), PLAN.steps, S.MNEMONIC);
       detail([{ k: 'Sent', v: res.hash.slice(0, 10) + '\u2026' },
               { k: 'Status', v: 'waiting for a block' }]);
       armGo('Sent', false);

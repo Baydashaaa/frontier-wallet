@@ -1,7 +1,7 @@
-import { LCD, amt, fmt, getJSON } from './chain.js?v=030b5996';
-import { $, buzz, go, tap } from './shell.js?v=030b5996';
-import { S } from './state.js?v=030b5996';
-import { refreshBalances } from './tokens.js?v=030b5996';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=83eff145';
+import { $, buzz, go, tap } from './shell.js?v=83eff145';
+import { S } from './state.js?v=83eff145';
+import { refreshBalances } from './tokens.js?v=83eff145';
 
 /* ---------------- protobuf ----------------
    Written out by hand because cosmjs is several hundred kilobytes and this is
@@ -369,18 +369,27 @@ const msgExec = (sender, contract, msgJson, funds) => cat([
   fStr(1, sender), fStr(2, contract), fBytes(3, enc.encode(msgJson)),
   ...funds.map(c => fBytes(5, coin(c)))
 ]);
-function execTx(url, sender, contract, msgObj, funds, key, seq, feeCoins, gas){
-  const body = txBody([any(url, msgExec(sender, contract, JSON.stringify(msgObj), funds))], '');
+/* One signature, one or more messages.
+   Cosmos runs the messages of a transaction in order and commits them together
+   or not at all, which is exactly what a two step swap needs: the intermediate
+   token exists only between the first message and the second, and if anything
+   goes wrong neither ever happened. The array was always there in txBody; only
+   the callers assumed there would be one entry. */
+function execTx(url, sender, steps, key, seq, feeCoins, gas){
+  const body = txBody(steps.map(function (s) {
+    return any(url, msgExec(sender, s.contract, JSON.stringify(s.msg), s.funds));
+  }), '');
   return { body: body, auth: authInfo(key, seq, feeCoins, gas) };
 }
 
 // Everything a real swap would do, stopping one step short of signing.
-async function execPlan(from, contract, msgObj, funds, mnemonic){
+async function execPlan(from, steps, mnemonic){
   const [acc, key] = await Promise.all([account(from), keyOf(mnemonic)]);
   let used = 0, url = null, last = null;
   for (const u of EXEC_URLS) {
-    const probe = execTx(u, from, contract, msgObj, funds, key.pub, acc.seq,
-      [{ denom: 'uluna', amount: '1000000' }], 900000);
+    // the ceiling has to cover every message, not one of them
+    const probe = execTx(u, from, steps, key.pub, acc.seq,
+      [{ denom: 'uluna', amount: '1000000' }], 900000 * steps.length);
     try { used = await simulateGas(probe.body, probe.auth); url = u; break; }
     catch (e) { last = e; }
   }
@@ -391,16 +400,16 @@ async function execPlan(from, contract, msgObj, funds, mnemonic){
            gas: gas, gasFee: Math.ceil(gas * GAS_PRICE) };
 }
 
-async function dryRunSwap(from, contract, msgObj, funds, mnemonic){
-  const p = await execPlan(from, contract, msgObj, funds, mnemonic);
+async function dryRunSwap(from, steps, mnemonic){
+  const p = await execPlan(from, steps, mnemonic);
   return { gas: p.gas, gasUsed: p.used, gasFee: p.gasFee, url: p.url };
 }
 
 // Rebuilt from scratch rather than reusing the reviewed bytes: the sequence
 // moves whenever anything else touches this account.
-async function sendSwap(from, contract, msgObj, funds, mnemonic){
-  const p = await execPlan(from, contract, msgObj, funds, mnemonic);
-  const real = execTx(p.url, from, contract, msgObj, funds, p.key.pub, p.acc.seq,
+async function sendSwap(from, steps, mnemonic){
+  const p = await execPlan(from, steps, mnemonic);
+  const real = execTx(p.url, from, steps, p.key.pub, p.acc.seq,
     [{ denom: 'uluna', amount: String(p.gasFee) }], p.gas);
   const doc = signDoc(real.body, real.auth, CHAIN, p.acc.num);
   const sig = p.key.node.sign(p.key.sha256(doc));

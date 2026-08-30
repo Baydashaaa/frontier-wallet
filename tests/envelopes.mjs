@@ -31,6 +31,15 @@ function lift(src, header){
   throw new Error('unbalanced: ' + header);
 }
 
+// A single-line const has no braces of its own, so brace matching would run on
+// into whatever comes next. This takes the statement instead.
+function liftLine(src, header){
+  const i = src.indexOf(header);
+  if (i < 0) throw new Error('not found in swap.js: ' + header);
+  const end = src.indexOf(';\n', i);
+  return src.slice(i, end + 1);
+}
+
 function constant(name){
   const m = swap.match(new RegExp('const ' + name + '\\s*=\\s*([^;\\n]+)'));
   if (!m) throw new Error('constant not found: ' + name);
@@ -42,9 +51,10 @@ const { mod } = await loadMarket();
 
 const src = [
   'const SLIP = ' + SLIP + ';',
-  lift(swap, 'const keyOf ='),
-  lift(swap, 'function envelope()'),
-  'return { envelope, keyOf };'
+  liftLine(swap, 'const keyOf ='),
+  lift(swap, 'function envelope('),
+  lift(swap, 'function steps()'),
+  'return { envelope, keyOf, steps };'
 ].join('\n');
 
 const make = new Function('gdInfo', 'btoa', 'FROM', 'QUOTE', src);
@@ -136,6 +146,47 @@ group('envelopes: the two deadlines that look alike');
   ok('and they differ by about a thousand',
      Math.round(gd.deadline / cl.deadline) === 1000,
      String(gd.deadline / cl.deadline));
+}
+
+group('two steps, one transaction');
+{
+  const MID = { sym: 'cUSTC', contract: 'terra1custc' };
+  // what quoteHop builds: the second leg is offered by the middle token and
+  // spends the first leg's guaranteed minimum, never its expectation
+  const min1 = String(Math.floor(Number(RETURN) * (1 - SLIP)));
+  const quote = {
+    hops: 2, mid: MID,
+    legs: [
+      { pair: 'terra1poolA', dialect: 'cl', offerRaw: OFFER, returnRaw: RETURN },
+      { pair: 'terra1poolB', dialect: 'gd', offerRaw: min1, returnRaw: '900' }
+    ]
+  };
+  const api = make(mod.gdInfo, b64, TOK, quote);
+  const st = api.steps();
+
+  ok('a hop is two messages', st.length === 2, String(st.length));
+  ok('the first is offered by the token on screen', st[0].contract === TOK.contract);
+  ok('the second is offered by the middle token', st[1].contract === MID.contract);
+  ok('the first spends what the user typed',
+     st[0].msg.send.amount === OFFER, st[0].msg.send.amount);
+  ok('the second spends the first leg\'s guaranteed minimum, not its quote',
+     st[1].msg.send.amount === min1 && st[1].msg.send.amount !== RETURN,
+     st[1].msg.send.amount + ' vs quoted ' + RETURN);
+  ok('each message goes to its own pool',
+     st[0].msg.send.contract === 'terra1poolA' && st[1].msg.send.contract === 'terra1poolB');
+
+  const h1 = JSON.parse(Buffer.from(st[0].msg.send.msg, 'base64').toString()).swap;
+  const h2 = JSON.parse(Buffer.from(st[1].msg.send.msg, 'base64').toString()).swap;
+  ok('each leg speaks its own pool\'s dialect',
+     h1.deadline < 1e11 && h2.deadline > 1e12,
+     'cl ' + h1.deadline + ', gd ' + h2.deadline);
+  ok('the second leg names the middle token as what it offers',
+     h2.offer_asset && h2.offer_asset.cw20 === MID.contract,
+     JSON.stringify(h2.offer_asset));
+
+  const one = make(mod.gdInfo, b64, TOK,
+    { hops: 1, legs: [{ pair: 'terra1pool', dialect: 'ts', offerRaw: OFFER, returnRaw: RETURN }] });
+  ok('a direct trade is still one message', one.steps().length === 1);
 }
 
 group('envelopes: against the transactions these were read from');

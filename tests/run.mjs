@@ -197,6 +197,37 @@ group('two hops: candidates are filtered before they are capped');
   ok('a usable neighbour is not lost behind unusable ones', ustr && ustr.depth > 500000);
 }
 
+group('routing through a middle asset');
+{
+  const { mod } = await loadMarket();
+  await mod.owMarket();
+  await mod.graph();
+
+  ok('no pool holds UST1 and CL8Y', mod.poolsBetween(A.UST1, A.CL8Y).length === 0);
+  const mids = mod.midsBetween(A.UST1, A.CL8Y);
+  ok('but a middle asset connects them', mids.length > 0, String(mids.length));
+  ok('and it is the wrapper their own exchange routes through',
+     mids.some(m => m.key === A.CUSTC), mids.map(m => m.key).join(','));
+
+  const via = mids.filter(m => m.key === A.CUSTC)[0];
+  ok('both legs come with pools attached',
+     via.first.length > 0 && via.second.length > 0);
+  ok('the legs are the two real pools',
+     via.first[0].pair === 'P_UST1_CUSTC' && via.second[0].pair === 'P_CUSTC_CL8Y',
+     via.first[0].pair + ' then ' + via.second[0].pair);
+
+  ok('an asset is never its own middle',
+     mod.midsBetween(A.UST1, A.CUSTC).every(m => m.key !== A.UST1 && m.key !== A.CUSTC));
+  // LUNC is JURIS's only neighbour and holds no pool with CL8Y, so there is
+  // no way through. An assertion of >= 0 here was true no matter what.
+  ok('a pair with no way through gets no middle asset',
+     mod.midsBetween(A.JURIS, A.CL8Y).length === 0,
+     String(mod.midsBetween(A.JURIS, A.CL8Y).length));
+}
+
+// the two step quote, lifted from swap.js like the envelopes below
+await import('./hop.mjs');
+
 // the signed message, in its own file because it is lifted from swap.js rather
 // than imported
 await import('./envelopes.mjs');

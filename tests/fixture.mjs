@@ -105,6 +105,45 @@ const asFlat = key => key.slice(0, 5) === 'cw20:'
   ? { cw20: key.slice(5) }
   : { native: key.slice(7) };
 
+/* A real curve, not a fixed answer.
+
+   The output has to move with the input, or a test cannot tell a quote taken on
+   one amount from a quote taken on another - and the whole two step design
+   turns on quoting the second leg on the minimum rather than on the
+   expectation. Integer arithmetic throughout, because an eighteen decimal
+   reserve does not survive a double. */
+const FEE_BPS = { ts: 30, gd: 30, cl: 180 };
+
+function offerOf(body){
+  const a = body.offer_asset || {};
+  const key = a.info ? (a.info.token ? 'cw20:' + a.info.token.contract_addr
+                                     : 'native:' + a.info.native_token.denom)
+            : a.cw20 ? 'cw20:' + a.cw20
+            : a.native ? 'native:' + a.native : null;
+  const amount = a.amount || body.offer_amount ||
+                 (body.hybrid && body.hybrid.pool_input) || '0';
+  return { key: key, amount: BigInt(amount) };
+}
+
+function constantProduct(pool, body){
+  const o = offerOf(body);
+  const forward = o.key === pool.a;
+  const inR = BigInt(forward ? pool.ra : pool.rb);
+  const outR = BigInt(forward ? pool.rb : pool.ra);
+  const dx = o.amount;
+  if (dx <= 0n || inR <= 0n) return { return_amount: '0', spread_amount: '0', commission_amount: '0' };
+
+  const gross = (outR * dx) / (inR + dx);
+  const ideal = (outR * dx) / inR;                 // what a spread-free pool gives
+  const bps = BigInt(FEE_BPS[pool.dex] || 30);
+  const commission = (gross * bps) / 10000n;
+  return {
+    return_amount: String(gross - commission),
+    spread_amount: String(ideal - gross),
+    commission_amount: String(commission)
+  };
+}
+
 function fail(status, note){
   const e = new Error('fixture ' + note + ' -> ' + status);
   e.status = status;
@@ -170,7 +209,7 @@ export function makeChain(){
     // exactly as the real ones do, which is what dialect probing depends on
     const want = { ts: 'simulation', gd: 'simulate_swap', cl: 'hybrid_simulation' }[pool.dex];
     if (kind !== want) throw fail(500, 'wrong dialect ' + kind + ' for ' + pool.dex);
-    return { data: { return_amount: '1000', spread_amount: '1', commission_amount: '18' } };
+    return { data: constantProduct(pool, msg[kind]) };
   }
 
   async function getJSON(url){

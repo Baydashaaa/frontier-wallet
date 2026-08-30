@@ -1,4 +1,4 @@
-import { EXTRA_PAIRS, FACTORIES, LCD, THIN_LUNC, amt, getJSON, smart } from './chain.js?v=030b5996';
+import { EXTRA_PAIRS, FACTORIES, LCD, THIN_LUNC, amt, getJSON, smart } from './chain.js?v=83eff145';
 
 /* ---------------- discovery and pricing ----------------
    The chain has no "which CW20 does this address hold" endpoint. Balances live
@@ -391,6 +391,32 @@ async function mapPrice(key){
   if (!best) return null;
   return { inLunc: best.rate, depth: best.depth, hops: best.hops,
            route: best.route, via: best.via, legs: best.legs };
+}
+
+/* Assets that hold a pool with both sides, so a trade can go through them.
+   Ordered by the shallower of the two pools where the feed knows a depth, since
+   that is the leg a trade would run into first; ones nobody has measured come
+   after those rather than beneath them. */
+function midsBetween(a, b){
+  if (a === b) return [];
+  const seen = {}, out = [];
+  for (const p of directPeers(a).concat(graphPeers(a))) {
+    if (p.key === a || p.key === b || seen[p.key]) continue;
+    seen[p.key] = 1;
+    const second = poolsBetween(p.key, b);
+    if (!second.length) continue;
+    const first = poolsBetween(a, p.key);
+    if (!first.length) continue;
+    const d1 = first[0].liq, d2 = second[0].liq;
+    const known = d1 !== null && d2 !== null ? Math.min(d1, d2) : null;
+    out.push({ key: p.key, liq: known, first: first, second: second });
+  }
+  return out.sort(function (x, y) {
+    if (x.liq === null && y.liq === null) return 0;
+    if (x.liq === null) return 1;
+    if (y.liq === null) return -1;
+    return y.liq - x.liq;
+  });
 }
 
 // Two dialects, one question. TerraSwap asks `simulation` and wraps the side
@@ -943,4 +969,4 @@ async function poolPrice(token, quick){
   return await bondPrice(token).catch(() => null);
 }
 
-export { DEC, assetOf, cacheGet, cacheGetStale, cacheSet, cl8yList, directPairs, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, poolsBetween, reserves, simulateSwap, tsInfo, txCandidates };
+export { DEC, assetOf, cacheGet, cacheGetStale, cacheSet, cl8yList, directPairs, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapLimit, mapPrice, marketComplete, midsBetween, owLogo, owMarket, poolPrice, poolsBetween, reserves, simulateSwap, tsInfo, txCandidates };
