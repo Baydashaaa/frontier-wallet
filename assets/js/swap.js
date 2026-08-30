@@ -4,12 +4,12 @@
 // пул сам умеет ответить, сколько отдаст за конкретную сумму, с учётом
 // проскальзывания и комиссии. Считать это самому - значит показать одно
 // число, а получить другое.
-import { amt, fmt, iconHTML, paintIcons, usd } from './chain.js?v=2df7b8f8';
-import { $, go, tap } from './shell.js?v=2df7b8f8';
-import { assetOf, directPeers, gdInfo, poolPrice, poolsBetween, reserves, simulateSwap } from './market.js?v=2df7b8f8';
-import { fiatOf, heldTokens, refreshBalances } from './tokens.js?v=2df7b8f8';
-import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=2df7b8f8';
-import { S } from './state.js?v=2df7b8f8';
+import { amt, fmt, iconHTML, paintIcons, usd } from './chain.js?v=8846e8d2';
+import { $, go, tap } from './shell.js?v=8846e8d2';
+import { assetOf, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, poolPrice, poolsBetween, reserves, simulateSwap } from './market.js?v=8846e8d2';
+import { fiatOf, heldTokens, refreshBalances } from './tokens.js?v=8846e8d2';
+import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=8846e8d2';
+import { S } from './state.js?v=8846e8d2';
 
 const LUNC = { sym: 'LUNC', denom: 'uluna', dec: 6, native: true };
 let FROM = LUNC, TO = null, TIMER = null, SEQ = 0;
@@ -34,7 +34,7 @@ const keyOf = t => !t ? '' : (t.contract ? 'cw20:' + t.contract : 'native:' + t.
 function tokenFor(key){
   const held = heldTokens().find(r => keyOf(r) === key);
   if (held) return held;
-  const a = assetOf(key);
+  const a = knownAsset(key);
   if (!a) return null;
   const base = { sym: a.sym, dec: a.dec, logo: a.logo, v: 0 };
   if (key.slice(0, 5) === 'cw20:') base.contract = key.slice(5);
@@ -60,8 +60,32 @@ const THIN_POOL = 50;      // dollars of liquidity, from the market map
 // leaves a balance on the main screen with no way to act on it. UST1 trades
 // only against cUSTC and that pool is small, which is exactly the case the
 // threshold was quietly deciding on the owner's behalf.
+// Both sources, merged by asset rather than by pool: the feed knows depth, the
+// factory walk knows the exchanges the feed skips, and either alone leaves out
+// tokens this wallet is holding.
 function allPeersOf(t){
-  return directPeers(keyOf(t)).filter(p => !LEGACY(p.key.slice(7)));
+  const k = keyOf(t);
+  const seen = {}, out = [];
+  for (const p of directPeers(k).concat(graphPeers(k))) {
+    if (LEGACY(p.key.slice(7))) continue;
+    const was = seen[p.key];
+    if (was) { if ((p.liq || 0) > was.liq) Object.assign(was, p); continue; }
+    seen[p.key] = Object.assign({ liq: 0 }, p);
+    out.push(seen[p.key]);
+  }
+  return out.sort((a, b) => b.liq - a.liq);
+}
+
+/* The factory walk covers what the feed does not, and until now only the daily
+   sweep ever started it - so a CL8Y token stayed unswappable for as long as a
+   day after it arrived. Opening this screen is a deliberate act by someone who
+   is about to choose an asset, which makes it the right moment to pay for the
+   walk once. Cached for six hours afterwards. */
+let WALKING = false;
+function ensureGraph(){
+  if (WALKING || graphReady()) return;
+  WALKING = true;
+  graph().then(function () { fillPickers(); drawSheet(); }).catch(function () {});
 }
 
 // The destination list is a different question. Sending someone into a pool too
@@ -174,9 +198,10 @@ function fillPickers(){
   if ((!TO || keyOf(TO) === keyOf(FROM)) && peers.length) TO = tokenFor(peers[0].key);
   face($('#sw-from'), FROM);
   face($('#sw-to'), TO || LUNC);
+  ensureGraph();
   $('#sw-net').textContent = peers.length
-    ? peers.length + ' pairs with ' + FROM.sym
-    : 'nothing pairs with ' + FROM.sym;
+    ? peers.length + ' pairs with ' + FROM.sym + (graphReady() ? '' : ', still looking')
+    : (graphReady() ? 'nothing pairs with ' + FROM.sym : 'looking for pairs');
   const bal = balOf(FROM);
   $('#sw-avail').textContent = bal ? fmt(bal) + ' available' : '';
   paintZones();
@@ -201,6 +226,19 @@ function sheetRows(side){
     return mine;
   }
   return peersOf(FROM).map(p => tokenFor(p.key)).filter(Boolean);
+}
+
+// Rows the sheet could not name yet. Asked for once, all at once, and the sheet
+// is redrawn when they land - one redraw rather than a row appearing at a time.
+let NAMING = false;
+function nameTheRest(side){
+  if (NAMING || side === 'from') return;
+  const missing = peersOf(FROM).map(p => p.key).filter(k => !knownAsset(k) &&
+    !heldTokens().some(r => keyOf(r) === k));
+  if (!missing.length) return;
+  NAMING = true;
+  Promise.all(missing.slice(0, 24).map(k => learnAsset(k).catch(() => null)))
+    .then(function () { NAMING = false; drawSheet(); });
 }
 
 // The search field is built once and lives above the list. It is not in the
@@ -246,6 +284,7 @@ function openSheet(side){
   const box = findBox();
   box.value = '';
   drawSheet();
+  nameTheRest(side);
   const sheet = $('#sw-sheet');
   sheet.dataset.side = side;
   sheet.hidden = false;

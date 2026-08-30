@@ -1,4 +1,4 @@
-import { EXTRA_PAIRS, FACTORIES, LCD, amt, getJSON, smart } from './chain.js?v=2df7b8f8';
+import { EXTRA_PAIRS, FACTORIES, LCD, amt, getJSON, smart } from './chain.js?v=8846e8d2';
 
 /* ---------------- discovery and pricing ----------------
    The chain has no "which CW20 does this address hold" endpoint. Balances live
@@ -26,6 +26,28 @@ function assetOf(key){
   };
 }
 
+/* The feed names what it indexes, and nothing else - so a CL8Y token has a
+   pool, a price and a balance, and no symbol to put on the row. The contract
+   knows its own name; asking it once and keeping the answer is cheaper than
+   leaving the asset unnameable and therefore unlistable. */
+const ASSET = {};
+function knownAsset(key){
+  return ASSET[key] || assetOf(key) || cacheGetStale('as:' + key) || null;
+}
+async function learnAsset(key){
+  const have = knownAsset(key);
+  if (have) { ASSET[key] = have; return have; }
+  if (!key || key.slice(0, 5) !== 'cw20:') return null;
+  const r = await smart(key.slice(5), { token_info: {} }, 1).catch(() => null);
+  const d = r && r.data;
+  if (!d || !d.symbol) return null;
+  const a = { key: key, sym: d.symbol,
+              dec: d.decimals === undefined ? 6 : d.decimals, logo: null };
+  cacheSet('as:' + key, a);
+  ASSET[key] = a;
+  return a;
+}
+
 // Everything that shares a pool with this asset, deepest pool first. One entry
 // per counterparty: several exchanges list the same pair, and the picker is
 // naming assets, not pools.
@@ -44,14 +66,38 @@ function directPeers(key){
   return out.sort((x, y) => y.liq - x.liq);
 }
 
+// Peers the factory walk found. graph() exists to cover the exchanges the feed
+// does not - CL8Y and TwingoSwap, by its own comment - and its edges carry no
+// depth, because a factory listing says which pools exist and nothing else.
+function graphPeers(key){
+  if (!GRAPH || !GRAPH.edges) return [];
+  const best = {};
+  for (const e of (GRAPH.edges[key] || [])) {
+    if (e.to === key) continue;
+    const liq = e.liq || 0;
+    if (!best[e.to] || liq > best[e.to].liq) {
+      best[e.to] = { key: e.to, pair: e.pair, liq: liq, dex: e.dex || 'ts' };
+    }
+  }
+  return Object.keys(best).map(k => best[k]);
+}
+
 // Every pool holding exactly these two, deepest first. This is the candidate
 // list a quote is taken from: which one is best depends on the amount, so all
 // of them get asked.
+//
+// Both sources, deduplicated by pool address. graph() already folds the feed's
+// edges into its own, so the same pool arrives twice whenever both know it.
 function poolsBetween(a, b){
-  if (!OW || !OW.edges) return [];
-  return (OW.edges[a] || []).filter(e => e.to === b)
-    .sort((x, y) => y.liq - x.liq)
-    .map(e => ({ pair: e.pair, dex: e.dex, liq: e.liq }));
+  const out = [];
+  const take = function (e) {
+    if (e.to !== b) return;
+    if (out.some(x => x.pair === e.pair)) return;
+    out.push({ pair: e.pair, dex: e.dex || 'ts', liq: e.liq || 0 });
+  };
+  if (OW && OW.edges) (OW.edges[a] || []).forEach(take);
+  if (GRAPH && GRAPH.edges) (GRAPH.edges[a] || []).forEach(take);
+  return out.sort((x, y) => y.liq - x.liq);
 }
 
 // One side of one pool, priced against the other. Decimals come from the map,
@@ -622,4 +668,4 @@ async function poolPrice(token, quick){
   return await bondPrice(token).catch(() => null);
 }
 
-export { DEC, assetOf, cacheGet, cacheGetStale, cacheSet, directPairs, directPeers, gdInfo, graph, graphReady, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, poolsBetween, reserves, simulateSwap, tsInfo, txCandidates };
+export { DEC, assetOf, cacheGet, cacheGetStale, cacheSet, directPairs, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, poolsBetween, reserves, simulateSwap, tsInfo, txCandidates };
