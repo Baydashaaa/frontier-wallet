@@ -1,6 +1,6 @@
-import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=ea0cc90c';
-import { DEC, cacheGet, cacheGetStale, cacheSet, cl8yList, graph, graphReady, knownAsset, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=ea0cc90c';
-import { $, go } from './shell.js?v=ea0cc90c';
+import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=030b5996';
+import { DEC, cacheGet, cacheGetStale, cacheSet, cl8yList, graph, graphReady, knownAsset, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=030b5996';
+import { $, go } from './shell.js?v=030b5996';
 
 // keep=true means this contract is on the address's list, so it earns a row
 // even at zero. Only an unknown contract has to prove itself with a balance.
@@ -74,6 +74,18 @@ function forget(addr, contract){
 
 const keyOfRow = r => r.contract ? 'cw20:' + r.contract : 'native:' + r.denom;
 
+/* One walk per session, and only on demand.
+   Nothing here is speculative: it runs when rows exist that cannot be priced
+   any other way, after they have already been drawn without prices. */
+let FILLING = false;
+function fillDeferred(list, found, px){
+  if (FILLING || graphReady()) return;
+  FILLING = true;
+  graph()
+    .then(function () { return priceRows(list, found, px); })
+    .catch(function () {});
+}
+
 let PRICING = 0;
 async function priceRows(list, found, px){
   const mine = ++PRICING;
@@ -142,6 +154,12 @@ async function priceRows(list, found, px){
   const left = rest.filter(r => !r.pool);
   if (left.length && !ready) {
     left.forEach(r => { r.deferred = true; });
+    // The walk is the only thing that can answer for these, and this is the
+    // wallet's own list saying which. Started behind the finished screen rather
+    // than in front of it, and once per session - the sweep would get here
+    // eventually, but "eventually" is up to a day away on a device that swept
+    // this morning.
+    fillDeferred(list, found, px);
   } else if (left.length) {
     const slow = await mapLimit(left, 4, r => (r.contract
       ? poolPrice(r.contract)

@@ -1,12 +1,12 @@
 // Loading order matches the order these blocks had in index.html.
 // Several of them attach handlers as they run, so the sequence is not
 // cosmetic.
-import './shell.js?v=ea0cc90c';
-import './onboarding.js?v=ea0cc90c';
-import './crypto.js?v=ea0cc90c';
-import './chain.js?v=ea0cc90c';
-import './market.js?v=ea0cc90c';
-import './tokens.js?v=ea0cc90c';
-import './tx.js?v=ea0cc90c';
-import './storage.js?v=ea0cc90c';
-import './boot.js?v=ea0cc90c';
+import './shell.js?v=030b5996';
+import './onboarding.js?v=030b5996';
+import './crypto.js?v=030b5996';
+import './chain.js?v=030b5996';
+import './market.js?v=030b5996';
+import './tokens.js?v=030b5996';
+import './tx.js?v=030b5996';
+import './storage.js?v=030b5996';
+import './boot.js?v=030b5996';
