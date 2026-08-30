@@ -1,4 +1,4 @@
-import { EXTRA_PAIRS, FACTORIES, LCD, amt, getJSON, smart } from './chain.js?v=f8df9ee2';
+import { EXTRA_PAIRS, FACTORIES, LCD, amt, getJSON, smart } from './chain.js?v=d83a9b26';
 
 /* ---------------- discovery and pricing ----------------
    The chain has no "which CW20 does this address hold" endpoint. Balances live
@@ -26,15 +26,53 @@ function assetOf(key){
   };
 }
 
+/* CL8Y publishes what it lists - symbol, decimals, and a picture, which is the
+   one thing neither the feed nor a contract query will give us. It ships with
+   the app rather than being fetched from the exchange, so it costs one local
+   file read and cannot fail at the wrong moment; the cost is that it goes stale
+   when they add a token, which is what the cache-busting version is for.
+
+   Order of authority: the market feed, then this, then the contract itself. The
+   first two are free. */
+const LIST_V = (String(import.meta.url).split('?v=')[1] || '').split('&')[0];
+let LIST = null;
+async function cl8yList(){
+  if (LIST) return LIST;
+  const hit = cacheGetStale('cl8y:' + LIST_V);
+  if (hit) { LIST = hit; return LIST; }
+  const out = {};
+  try {
+    const r = await fetch('assets/cl8y-tokens.json' + (LIST_V ? '?v=' + LIST_V : ''));
+    const rows = ((await r.json()) || {}).tokens || [];
+    for (const t of rows) {
+      if (!t || !t.symbol) continue;
+      const key = t.address ? 'cw20:' + t.address
+                : t.denom ? 'native:' + t.denom : null;
+      if (!key) continue;
+      out[key] = { key: key, sym: t.symbol,
+                   dec: t.decimals === undefined ? 6 : t.decimals,
+                   logo: t.logoURI || null };
+      if (DEC[key] === undefined && t.decimals !== undefined) DEC[key] = t.decimals;
+    }
+    cacheSet('cl8y:' + LIST_V, out);
+  } catch (e) { /* a missing list is one fewer source, not a failure */ }
+  LIST = out;
+  return LIST;
+}
+// started at load: everything that reads it wants an answer without waiting
+cl8yList();
+
 /* The feed names what it indexes, and nothing else - so a CL8Y token has a
    pool, a price and a balance, and no symbol to put on the row. The contract
    knows its own name; asking it once and keeping the answer is cheaper than
    leaving the asset unnameable and therefore unlistable. */
 const ASSET = {};
 function knownAsset(key){
-  return ASSET[key] || assetOf(key) || cacheGetStale('as:' + key) || null;
+  return ASSET[key] || assetOf(key) || (LIST && LIST[key]) ||
+         cacheGetStale('as:' + key) || null;
 }
 async function learnAsset(key){
+  await cl8yList();
   const have = knownAsset(key);
   if (have) { ASSET[key] = have; return have; }
   if (!key || key.slice(0, 5) !== 'cw20:') return null;
@@ -74,8 +112,11 @@ function graphPeers(key){
   const best = {};
   for (const e of (GRAPH.edges[key] || [])) {
     if (e.to === key) continue;
-    const liq = e.liq || 0;
-    if (!best[e.to] || liq > best[e.to].liq) {
+    // an edge the walk found has no depth attached, and saying 0 is a claim we
+    // cannot make - it reads as "empty pool" to everything downstream
+    const liq = typeof e.liq === 'number' ? e.liq : null;
+    const was = best[e.to];
+    if (!was || (liq !== null && (was.liq === null || liq > was.liq))) {
       best[e.to] = { key: e.to, pair: e.pair, liq: liq, dex: e.dex || 'ts' };
     }
   }
@@ -93,11 +134,19 @@ function poolsBetween(a, b){
   const take = function (e) {
     if (e.to !== b) return;
     if (out.some(x => x.pair === e.pair)) return;
-    out.push({ pair: e.pair, dex: e.dex || 'ts', liq: e.liq || 0 });
+    out.push({ pair: e.pair, dex: e.dex || 'ts',
+               liq: typeof e.liq === 'number' ? e.liq : null });
   };
   if (OW && OW.edges) (OW.edges[a] || []).forEach(take);
   if (GRAPH && GRAPH.edges) (GRAPH.edges[a] || []).forEach(take);
-  return out.sort((x, y) => y.liq - x.liq);
+  // known depths first, largest first; unmeasured ones after them rather than
+  // beneath them - they are still candidates, deepestLeg will measure them
+  return out.sort(function (x, y) {
+    if (x.liq === null && y.liq === null) return 0;
+    if (x.liq === null) return 1;
+    if (y.liq === null) return -1;
+    return y.liq - x.liq;
+  });
 }
 
 // One side of one pool, priced against the other. Decimals come from the map,
@@ -121,29 +170,59 @@ async function legRate(pair, from, to){
 // every factory and read every pool before it can answer anything. Two hops is
 // the ceiling on purpose: a third would need a search, and a token three pools
 // away from LUNC is not one this screen can price honestly anyway.
+/* The deepest of several pools holding the same two assets, measured rather
+   than assumed. Taking the first of the list only works when the list is
+   ordered by depth, and it is not: an edge from the factory walk carries liq 0,
+   because a factory listing says a pool exists and nothing about its size. So
+   every candidate sorted to the front by a tie of zeroes, and whichever
+   arbitrary pool won got to set the price - which is how USTR ended up at more
+   than twice what it trades for, off some thin pool nobody uses. */
+async function deepestLeg(pools, from, to, cap){
+  let best = null;
+  for (const p of pools.slice(0, cap || 3)) {
+    const r = await legRate(p.pair, from, to);
+    if (!r) continue;
+    if (!best || r.far > best.far) best = { pair: p.pair, rate: r.rate, far: r.far };
+  }
+  return best;
+}
+
 async function mapPrice(key){
   if (!key || key === LUNC_KEY) return null;
+
   const direct = poolsBetween(key, LUNC_KEY);
   if (direct.length) {
-    const one = await legRate(direct[0].pair, key, LUNC_KEY);
+    const one = await deepestLeg(direct, key, LUNC_KEY, 3);
     if (one) return { inLunc: one.rate, depth: one.far, hops: 1,
-                      route: [{ pair: direct[0].pair }] };
+                      route: [{ pair: one.pair }] };
   }
-  // otherwise through the deepest neighbour that itself trades against LUNC
-  const mids = directPeers(key)
-    .filter(p => p.key !== LUNC_KEY && poolsBetween(p.key, LUNC_KEY).length);
-  for (const m of mids.slice(0, 2)) {
-    const one = await legRate(m.pair, key, m.key);
-    if (!one) continue;
-    const leg = poolsBetween(m.key, LUNC_KEY)[0];
-    const two = await legRate(leg.pair, m.key, LUNC_KEY);
+
+  /* Two hops. Every candidate is measured and the best is kept, rather than the
+     first that answers - a token whose cluster sits away from LUNC often has
+     several ways out, and they do not agree. The one to believe is the one with
+     the most LUNC behind it, because that is the leg a real trade would have to
+     push through. */
+  const mids = directPeers(key).concat(graphPeers(key))
+    .filter(p => p.key !== key && p.key !== LUNC_KEY);
+  const tried = {};
+  let best = null;
+  for (const m of mids.slice(0, 6)) {
+    if (tried[m.key]) continue;
+    tried[m.key] = 1;
+    const out = poolsBetween(m.key, LUNC_KEY);
+    if (!out.length) continue;
+    const two = await deepestLeg(out, m.key, LUNC_KEY, 2);
     if (!two) continue;
+    const one = await deepestLeg(poolsBetween(key, m.key), key, m.key, 2);
+    if (!one) continue;
     // depth is the LUNC end of the route: the narrow leg is what a trade
     // actually runs into, and that is the far side of the second hop
-    return { inLunc: one.rate * two.rate, depth: two.far, hops: 2,
-             route: [{ pair: m.pair }, { pair: leg.pair }] };
+    if (!best || two.far > best.depth) {
+      best = { inLunc: one.rate * two.rate, depth: two.far, hops: 2,
+               route: [{ pair: one.pair }, { pair: two.pair }], via: m.key };
+    }
   }
-  return null;
+  return best;
 }
 
 // Two dialects, one question. TerraSwap asks `simulation` and wraps the side
@@ -696,4 +775,4 @@ async function poolPrice(token, quick){
   return await bondPrice(token).catch(() => null);
 }
 
-export { DEC, assetOf, cacheGet, cacheGetStale, cacheSet, directPairs, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, poolsBetween, reserves, simulateSwap, tsInfo, txCandidates };
+export { DEC, assetOf, cacheGet, cacheGetStale, cacheSet, cl8yList, directPairs, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, poolsBetween, reserves, simulateSwap, tsInfo, txCandidates };

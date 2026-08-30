@@ -1,0 +1,103 @@
+{
+  "name": "CL8Y DEX Terra Classic Token List",
+  "logoURI": "https://gitlab.com/PlasticDigits/cl8y-dex-terraclassic/-/raw/main/tokenlist/images/CL8Y.png",
+  "version": {
+    "major": 1,
+    "minor": 0,
+    "patch": 2
+  },
+  "keywords": ["terra-classic", "cl8y", "dex"],
+  "tokens": [
+    {
+      "symbol": "LUNC",
+      "name": "Terra Luna Classic",
+      "denom": "uluna",
+      "type": "native",
+      "decimals": 6,
+      "logoURI": "https://gitlab.com/PlasticDigits/cl8y-dex-terraclassic/-/raw/main/tokenlist/images/LUNC.png"
+    },
+    {
+      "symbol": "USTC",
+      "name": "TerraClassicUSD",
+      "denom": "uusd",
+      "type": "native",
+      "decimals": 6,
+      "logoURI": "https://gitlab.com/PlasticDigits/cl8y-dex-terraclassic/-/raw/main/tokenlist/images/USTC.png"
+    },
+    {
+      "symbol": "cLUNC",
+      "name": "Wrapped Luna Classic",
+      "address": "terra1437qslye72t7qmmahn4t5chz50r8a62g45phwkquwpyu2l62u6ksqssgdg",
+      "type": "cw20",
+      "decimals": 6,
+      "logoURI": "https://gitlab.com/PlasticDigits/cl8y-dex-terraclassic/-/raw/main/tokenlist/images/CLUNC.png"
+    },
+    {
+      "symbol": "cUSTC",
+      "name": "Wrapped TerraClassicUSD",
+      "address": "terra1nap4dxh9tv35v0ynd9m4k6zt6c0dq6weszc4j5m564kjls56hu7qcr56ch",
+      "type": "cw20",
+      "decimals": 6,
+      "logoURI": "https://gitlab.com/PlasticDigits/cl8y-dex-terraclassic/-/raw/main/tokenlist/images/CUSTC.png"
+    },
+    {
+      "symbol": "CL8Y",
+      "name": "CL8Y Token",
+      "address": "terra16wtml2q66g82fdkx66tap0qjkahqwp4lwq3ngtygacg5q0kzycgqvhpax3",
+      "type": "cw20",
+      "decimals": 18,
+      "logoURI": "https://gitlab.com/PlasticDigits/cl8y-dex-terraclassic/-/raw/main/tokenlist/images/CL8Y.png",
+      "website": "https://cl8y.com"
+    },
+    {
+      "symbol": "USTR",
+      "name": "USTR Token",
+      "address": "terra1vy3kc0swag2rhn7jz6n72jp0l2ns0p6r6ez5grxq5uhj2rvs97fqfsetxv",
+      "type": "cw20",
+      "decimals": 18,
+      "logoURI": "https://gitlab.com/PlasticDigits/cl8y-dex-terraclassic/-/raw/main/tokenlist/images/USTR.png"
+    },
+    {
+      "symbol": "ALPHA",
+      "name": "Alpha Token",
+      "address": "terra1x6e64es6yhauhvs3prvpdg2gkqdtfru840wgnhs935x8axr7zxkqzysuxz",
+      "type": "cw20",
+      "decimals": 6,
+      "logoURI": "https://gitlab.com/PlasticDigits/cl8y-dex-terraclassic/-/raw/main/tokenlist/images/ALPHA.png",
+      "website": "https://luncuniverse.com/"
+    },
+    {
+      "symbol": "USTRIX",
+      "name": "USTRIX Token",
+      "address": "terra1r3eaa2tucjr3es88wzuqpgxvssqflk9cghrjmf9uneds8wljyapqwtrcp5",
+      "type": "cw20",
+      "decimals": 6,
+      "logoURI": "https://gitlab.com/PlasticDigits/cl8y-dex-terraclassic/-/raw/main/tokenlist/images/USTRIX.png",
+      "website": "https://burnix.top"
+    },
+    {
+      "symbol": "SpaceUSD",
+      "name": "SpaceUSD Token",
+      "address": "terra1cvd5cgrs8rrl96hte34n57497u5f9cwuv3e6ztxgetkx4uzmcdyswv79zl",
+      "type": "cw20",
+      "decimals": 6,
+      "logoURI": "https://gitlab.com/PlasticDigits/cl8y-dex-terraclassic/-/raw/main/tokenlist/images/SPACEUSD.png"
+    },
+    {
+      "symbol": "UST1",
+      "name": "UST1",
+      "address": "terra1f0eqgy9w7e5e7up97vjudqwx38tesf8ylx75x2lv3nwm0clry0pqmgfy72",
+      "type": "cw20",
+      "decimals": 6,
+      "logoURI": "https://gitlab.com/PlasticDigits/cl8y-dex-terraclassic/-/raw/main/tokenlist/images/UST1.png"
+    },
+    {
+      "symbol": "vFDUSD",
+      "name": "Venus FDUSD (bridged)",
+      "address": "terra1mnl9azefrqpmu888ar2u6zrcwr80hxlt3avf4300r576cw5ar7esvxsvj3",
+      "type": "cw20",
+      "decimals": 6,
+      "logoURI": "https://gitlab.com/PlasticDigits/cl8y-dex-terraclassic/-/raw/main/tokenlist/images/VFDUSD.png"
+    }
+  ]
+}

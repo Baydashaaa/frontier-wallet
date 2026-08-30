@@ -4,12 +4,12 @@
 // пул сам умеет ответить, сколько отдаст за конкретную сумму, с учётом
 // проскальзывания и комиссии. Считать это самому - значит показать одно
 // число, а получить другое.
-import { amt, fmt, iconHTML, paintIcons, usd } from './chain.js?v=f8df9ee2';
-import { $, go, tap } from './shell.js?v=f8df9ee2';
-import { assetOf, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, poolsBetween, reserves, simulateSwap } from './market.js?v=f8df9ee2';
-import { fiatOf, heldTokens, refreshBalances } from './tokens.js?v=f8df9ee2';
-import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=f8df9ee2';
-import { S } from './state.js?v=f8df9ee2';
+import { amt, fmt, iconHTML, paintIcons, usd } from './chain.js?v=d83a9b26';
+import { $, go, tap } from './shell.js?v=d83a9b26';
+import { assetOf, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, poolsBetween, reserves, simulateSwap } from './market.js?v=d83a9b26';
+import { fiatOf, heldTokens, refreshBalances } from './tokens.js?v=d83a9b26';
+import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=d83a9b26';
+import { S } from './state.js?v=d83a9b26';
 
 const LUNC = { sym: 'LUNC', denom: 'uluna', dec: 6, native: true };
 let FROM = LUNC, TO = null, TIMER = null, SEQ = 0;
@@ -68,12 +68,23 @@ function allPeersOf(t){
   const seen = {}, out = [];
   for (const p of directPeers(k).concat(graphPeers(k))) {
     if (LEGACY(p.key.slice(7))) continue;
+    const liq = typeof p.liq === 'number' ? p.liq : null;
     const was = seen[p.key];
-    if (was) { if ((p.liq || 0) > was.liq) Object.assign(was, p); continue; }
-    seen[p.key] = Object.assign({ liq: 0 }, p);
+    if (was) {
+      // a measured depth beats an unmeasured one, and a bigger one beats a
+      // smaller - the feed and the walk often both know the same pair
+      if (liq !== null && (was.liq === null || liq > was.liq)) Object.assign(was, p, { liq: liq });
+      continue;
+    }
+    seen[p.key] = Object.assign({}, p, { liq: liq });
     out.push(seen[p.key]);
   }
-  return out.sort((a, b) => b.liq - a.liq);
+  return out.sort(function (a, b) {
+    if (a.liq === null && b.liq === null) return 0;
+    if (a.liq === null) return 1;
+    if (b.liq === null) return -1;
+    return b.liq - a.liq;
+  });
 }
 
 /* The factory walk covers what the feed does not, and until now only the daily
@@ -93,8 +104,11 @@ function ensureGraph(){
 // better to go - but if there is not, a thin pool beats no list at all.
 function peersOf(t){
   const all = allPeersOf(t);
-  const deep = all.filter(p => p.liq >= THIN_POOL);
-  return deep.length ? deep : all;
+  // A threshold may only exclude what it has actually measured. Pairs from the
+  // factory walk carry no depth, and treating that as zero is what removed
+  // every CL8Y token from the buy side without a word.
+  const ok = all.filter(p => p.liq === null || p.liq >= THIN_POOL);
+  return ok.length ? ok : all;
 }
 const swappable = t => !!t && !LEGACY(t.denom) && allPeersOf(t).length > 0;
 
@@ -451,7 +465,14 @@ async function learnPrice(t){
   const lunc = fiatOf({ sym: 'LUNC', v: 1 });
   if (lunc === null) return;
   const p = await mapPrice(k).catch(() => null);
-  if (!p || !p.inLunc) return;
+  if (!p || !p.inLunc) { console.warn('[swap] no route to price', k); return; }
+  // Printed because a wrong price is otherwise untraceable: the number on the
+  // screen says nothing about which pool produced it, and finding that out by
+  // hand took two rounds.
+  console.info('[swap] price', k, '=', p.inLunc * lunc, 'usd via',
+               p.hops + ' hop' + (p.hops > 1 ? 's' : ''),
+               p.via || '', p.route.map(r => r.pair).join(' -> '),
+               'depth', p.depth);
   PX[k] = p.inLunc * lunc;
   paintUsd();
 }
