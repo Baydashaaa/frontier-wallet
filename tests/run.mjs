@@ -186,10 +186,19 @@ group('pool dialects');
   const cl = await mod.simulateSwap('P_UST1_USTR', A.UST1, '1000000', 'ts');
   ok('a CL8Y pool is found the same way', cl.dialect === 'cl');
 
-  const before = chain.calls.smart;
-  await mod.simulateSwap('P_UST1_USTR', A.UST1, '2000000', 'ts');
-  ok('the dialect is remembered, so the second ask costs one call',
+  let before = chain.calls.smart;
+  await mod.simulateSwap('P_USTC_LUNC', A.USTC, '2000000', 'ts');
+  ok('a remembered dialect costs one call, not four',
      chain.calls.smart - before === 1, String(chain.calls.smart - before));
+
+  // a hybrid pool is two questions: the curve and the book
+  before = chain.calls.smart;
+  const both = await mod.simulateSwap('P_UST1_USTR', A.UST1, '2000000', 'cl');
+  ok('a hybrid pool is asked about both its sides',
+     chain.calls.smart - before === 2, String(chain.calls.smart - before));
+  ok('and the better side is the one quoted', both.via === 'book', both.via);
+  ok('the answer says which side it came from',
+     both.via === 'book' || both.via === 'pool');
 }
 
 group('two hops: candidates are filtered before they are capped');

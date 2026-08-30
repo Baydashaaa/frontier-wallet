@@ -1,4 +1,4 @@
-import { EXTRA_PAIRS, FACTORIES, LCD, THIN_LUNC, amt, getJSON, smart } from './chain.js?v=53330a9b';
+import { EXTRA_PAIRS, FACTORIES, LCD, THIN_LUNC, amt, getJSON, smart } from './chain.js?v=04347cb2';
 
 /* ---------------- discovery and pricing ----------------
    The chain has no "which CW20 does this address hold" endpoint. Balances live
@@ -452,10 +452,20 @@ const clHybrid = raw => ({
   book_start_hint: null
 });
 
-const simMsg = (d, key, raw) =>
+/* The same question put to the order book instead of the curve.
+   max_maker_fills bounds how many resting orders one trade may consume, and
+   with it the gas; eight is enough to matter and small enough to price. */
+const clBook = raw => ({
+  pool_input: '0',
+  book_input: raw,
+  max_maker_fills: 8,
+  book_start_hint: null
+});
+
+const simMsg = (d, key, raw, book) =>
   d === 'gd' ? { simulate_swap: { offer_asset: gdInfo(key), offer_amount: raw } } :
   d === 'cl' ? { hybrid_simulation: { offer_asset: { info: tsInfo(key), amount: raw },
-                                      hybrid: clHybrid(raw) } } :
+                                      hybrid: (book ? clBook : clHybrid)(raw) } } :
   { simulation: { offer_asset: { info: tsInfo(key), amount: raw } } };
 
 // A pool's code does not change, so which dialect it answers to is worth
@@ -478,7 +488,16 @@ async function simulateSwap(pair, offerKey, raw, guess){
       const x = (r && r.data) || {};
       if (x.return_amount === undefined) throw new Error('pool gave no return_amount');
       if (known !== d) cacheSet('dex:' + pair, d);
-      return Object.assign({ dialect: d }, x);
+      if (d !== 'cl') return Object.assign({ dialect: d }, x);
+
+      // Both sides of a hybrid pool, because the execution message picks
+      // neither and the contract will use whichever serves the trade.
+      const alt = await smart(pair, simMsg(d, offerKey, raw, true), 1).catch(() => null);
+      const y = (alt && alt.data) || null;
+      if (y && Number(y.return_amount) > Number(x.return_amount)) {
+        return Object.assign({ dialect: d, via: 'book' }, y);
+      }
+      return Object.assign({ dialect: d, via: 'pool' }, x);
     } catch (e) { last = e; }
   }
   throw last || new Error('no dialect answered');

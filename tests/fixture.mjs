@@ -129,6 +129,11 @@ function offerOf(body){
 
 function constantProduct(pool, body){
   const o = offerOf(body);
+  // A hybrid pool answers about its curve or about its order book, and the two
+  // do not agree - on the pair this was modelled from, the book charged half
+  // the fee. A fixture where both sides return the same cannot show whether the
+  // better one was chosen.
+  const onBook = !!(body.hybrid && body.hybrid.book_input && body.hybrid.book_input !== '0');
   const forward = o.key === pool.a;
   const inR = BigInt(forward ? pool.ra : pool.rb);
   const outR = BigInt(forward ? pool.rb : pool.ra);
@@ -137,11 +142,11 @@ function constantProduct(pool, body){
 
   const gross = (outR * dx) / (inR + dx);
   const ideal = (outR * dx) / inR;                 // what a spread-free pool gives
-  const bps = BigInt(FEE_BPS[pool.dex] || 30);
+  const bps = BigInt(onBook ? 90 : (FEE_BPS[pool.dex] || 30));
   const commission = (gross * bps) / 10000n;
   return {
     return_amount: String(gross - commission),
-    spread_amount: String(ideal - gross),
+    spread_amount: String(onBook ? 0n : ideal - gross),
     commission_amount: String(commission)
   };
 }
