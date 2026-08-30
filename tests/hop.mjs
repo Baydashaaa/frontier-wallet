@@ -83,6 +83,32 @@ group('decimals reach the amount that is offered');
      api.decOf({ contract: 'terra1neverseen' }) === 6);
 }
 
+group('naming the gap between two dollar figures');
+{
+  // valueGap decides whether the difference between what goes in and what comes
+  // out, measured in dollars, is explained by what the trade costs. The two
+  // amounts are priced independently, so on a thin market they disagree by more
+  // than any fee - and saying nothing about that leaves "price impact 0.02%"
+  // sitting next to a ten percent drop with no account of it anywhere.
+  const api = new Function('unitUsd', 'FROM', 'TO', [
+    lift(swap, 'function valueGap('), 'return { valueGap };'
+  ].join('\n'))(t => (t && t.px !== undefined ? t.px : null),
+                 { px: 1 }, { px: 1 });
+
+  ok('a gap the costs explain is not mentioned',
+     api.valueGap(100, 97.5, 2.5) === null);
+  ok('nor is one just barely above them',
+     api.valueGap(100, 96.6, 2.5) === null);
+  const big = api.valueGap(100, 89.3, 2.72);
+  ok('a gap the costs cannot explain is named', !!big);
+  ok('and it states what the trade actually costs',
+     big && big.note.indexOf('2.72%') >= 0, big && big.note.slice(0, 40));
+  ok('and how large the gap is', big && big.v === '-10.7%', big && big.v);
+  ok('a much larger one is flagged harder',
+     api.valueGap(100, 60, 2) .tone === 'bad');
+  ok('a trade that gains value says nothing', api.valueGap(100, 105, 2) === null);
+}
+
 group('a two step quote');
 {
   const { api, FROM, TO } = run(A.UST1, A.CL8Y);

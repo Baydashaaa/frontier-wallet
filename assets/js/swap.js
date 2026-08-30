@@ -4,12 +4,12 @@
 // пул сам умеет ответить, сколько отдаст за конкретную сумму, с учётом
 // проскальзывания и комиссии. Считать это самому - значит показать одно
 // число, а получить другое.
-import { THIN_LUNC, amt, fmt, iconHTML, paintIcons, usd } from './chain.js?v=24294c0b';
-import { $, go, tap } from './shell.js?v=24294c0b';
-import { DEC, assetOf, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, midsBetween, poolsBetween, reserves, simulateSwap } from './market.js?v=24294c0b';
-import { fiatOf, heldTokens, refreshBalances, remember } from './tokens.js?v=24294c0b';
-import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=24294c0b';
-import { S } from './state.js?v=24294c0b';
+import { THIN_LUNC, amt, fmt, iconHTML, paintIcons, usd } from './chain.js?v=65f01143';
+import { $, go, tap } from './shell.js?v=65f01143';
+import { DEC, assetOf, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, midsBetween, poolsBetween, reserves, simulateSwap } from './market.js?v=65f01143';
+import { fiatOf, heldTokens, refreshBalances, remember } from './tokens.js?v=65f01143';
+import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=65f01143';
+import { S } from './state.js?v=65f01143';
 
 const LUNC = { sym: 'LUNC', denom: 'uluna', dec: 6, native: true };
 let FROM = LUNC, TO = null, TIMER = null, SEQ = 0;
@@ -403,8 +403,33 @@ function result(state, title, note, hash){
 function detail(lines){
   $('#sw-detail').innerHTML = lines.map(function (l) {
     return '<div class="sw-line' + (l.tone ? ' ' + l.tone : '') + '">' +
-      '<span>' + l.k + '</span><b>' + l.v + '</b></div>';
+      '<span>' + l.k + '</span><b>' + l.v + '</b></div>' +
+      (l.note ? '<p class="sw-note">' + l.note + '</p>' : '');
   }).join('');
+}
+
+/* What the dollar figures say, against what the trade actually costs.
+
+   The two amounts on screen are priced independently - each asset along its own
+   route through its own pools - so they can disagree by more than the trade
+   takes, and on a thin market they usually do. Impact and fees are the cost;
+   anything beyond them is the two estimates failing to meet, which is worth
+   knowing and is not the same thing at all. */
+function valueGap(v, got, costPct){
+  const pf = unitUsd(FROM), pt = unitUsd(TO);
+  if (pf === null || pt === null || !(v > 0) || !(got > 0)) return null;
+  const paid = v * pf, back = got * pt;
+  if (!(paid > 0)) return null;
+  const gap = (1 - back / paid) * 100;
+  // a gap the trade explains needs no explaining
+  if (gap <= costPct + 1.5) return null;
+  return {
+    k: 'Dollar value', v: '-' + gap.toFixed(1) + '%',
+    tone: gap > costPct * 3 ? 'bad' : 'warn',
+    note: 'This trade costs ' + costPct.toFixed(2) + '%. The rest is the two ' +
+          'prices disagreeing: each side is valued through its own pools, and ' +
+          'on a market this thin they do not line up.'
+  };
 }
 
 /* Ask every pool that holds the pair and keep the best answer.
@@ -583,6 +608,8 @@ async function quote(){
             ? (direct.answered > 1 ? ', the rest too thin to matter' : '')
             : edge > 0.01 ? ', best by ' + edge.toFixed(2) + '%' : '') }
       ];
+      const gap = valueGap(v, c.out, pct + c.feePct);
+      if (gap) lines.splice(3, 0, gap);
     } else {
       hop = await quoteHop(mids, raw, refused);
       if (my !== SEQ) return;
@@ -608,6 +635,8 @@ async function quote(){
         { k: 'Pool depth', v: DEPTH[pair] ? fmt(DEPTH[pair]) + ' ' + FROM.sym : 'reading',
           tone: DEPTH[pair] && DEPTH[pair] < v * 20 ? 'warn' : '' }
       ];
+      const gap = valueGap(v, hop.two.out, pct + hop.one.feePct + hop.two.feePct);
+      if (gap) lines.splice(4, 0, gap);
     }
 
     out.classList.remove('dim');
