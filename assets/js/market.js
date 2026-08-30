@@ -1,4 +1,4 @@
-import { EXTRA_PAIRS, FACTORIES, LCD, THIN_LUNC, amt, getJSON, smart } from './chain.js?v=996645fb';
+import { EXTRA_PAIRS, FACTORIES, LCD, THIN_LUNC, amt, getJSON, smart } from './chain.js?v=ea0cc90c';
 
 /* ---------------- discovery and pricing ----------------
    The chain has no "which CW20 does this address hold" endpoint. Balances live
@@ -256,7 +256,10 @@ const USTC_KEY = 'native:uusd';
    One rebuild, the first time the walk has actually delivered. */
 let HUBS = null, HUBS_WALKED = false;
 function hubs(){
-  const walked = graphReady();
+  // GRAPH itself, not graphReady(). The flag says the pair list is cached; the
+  // edges only exist once something has actually built them, and the hubs are
+  // made of edges.
+  const walked = !!GRAPH;
   if (HUBS && (HUBS_WALKED || !walked)) return HUBS;
   HUBS_WALKED = walked;
   HUBS = buildHubs().catch(function () { HUBS = null; return []; });
@@ -264,6 +267,7 @@ function hubs(){
 }
 
 async function buildHubs(){
+  await warmGraph();
   const out = [];
   const ustc = await deepestLeg(poolsBetween(USTC_KEY, LUNC_KEY), USTC_KEY, LUNC_KEY, 3);
   if (!ustc) return out;
@@ -315,11 +319,23 @@ async function routeTo(key, base){
   return best;
 }
 
+/* Pull the graph into memory when doing so costs nothing.
+   A complete pair list in the cache is the common case after the first sweep,
+   and building the edges from it touches no network at all - but until someone
+   calls graph(), GRAPH is null and every pool the market feed does not publish
+   is invisible. That is the whole CL8Y exchange, sitting one free call away
+   from every price on the token list. */
+async function warmGraph(){
+  if (GRAPH || !graphReady()) return;
+  await graph().catch(function () {});
+}
+
 async function mapPrice(key){
   if (!key || key === LUNC_KEY) return null;
   // decimals before arithmetic: the list is where 18 comes from, and a price
   // computed at 6 is out by a factor of a trillion
   await cl8yList();
+  await warmGraph();
 
   // What was tried and what it gave. Printed only when the answer is thin or
   // missing, which is the only time anyone needs to know - and the only way to
