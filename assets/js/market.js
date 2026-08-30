@@ -1,4 +1,4 @@
-import { EXTRA_PAIRS, FACTORIES, LCD, amt, getJSON, smart } from './chain.js?v=d83a9b26';
+import { EXTRA_PAIRS, FACTORIES, LCD, amt, getJSON, smart } from './chain.js?v=c555deab';
 
 /* ---------------- discovery and pricing ----------------
    The chain has no "which CW20 does this address hold" endpoint. Balances live
@@ -52,7 +52,11 @@ async function cl8yList(){
       out[key] = { key: key, sym: t.symbol,
                    dec: t.decimals === undefined ? 6 : t.decimals,
                    logo: t.logoURI || null };
-      if (DEC[key] === undefined && t.decimals !== undefined) DEC[key] = t.decimals;
+      // Not "if undefined". A feed that never listed the token still has a
+      // default sitting in DEC, and legRate divides by ten to that power - so a
+      // wrong 6 against a real 18 is not a rounding error, it is a different
+      // number entirely. The issuer's own list outranks a guess.
+      if (t.decimals !== undefined) DEC[key] = t.decimals;
     }
     cacheSet('cl8y:' + LIST_V, out);
   } catch (e) { /* a missing list is one fewer source, not a failure */ }
@@ -66,10 +70,30 @@ cl8yList();
    pool, a price and a balance, and no symbol to put on the row. The contract
    knows its own name; asking it once and keeping the answer is cheaper than
    leaving the asset unnameable and therefore unlistable. */
+/* Merged, not first-wins. The feed knows almost every token but carries no
+   picture and only whatever decimals it happened to record; the published list
+   knows eleven tokens exactly and is right about all of them. Returning
+   whichever answered first meant one missing field in the feed's entry hid a
+   complete one in the list - which is why USTR kept its old icon and its wrong
+   scale after the list was already loaded. */
 const ASSET = {};
 function knownAsset(key){
-  return ASSET[key] || assetOf(key) || (LIST && LIST[key]) ||
-         cacheGetStale('as:' + key) || null;
+  if (ASSET[key]) return ASSET[key];
+  const feed = assetOf(key);
+  const list = LIST && LIST[key];
+  const kept = cacheGetStale('as:' + key);
+  if (!feed && !list && !kept) return null;
+  const pick = (field, order) => {
+    for (const src of order) if (src && src[field] !== undefined && src[field] !== null) return src[field];
+    return null;
+  };
+  return {
+    key: key,
+    sym: pick('sym', [feed, list, kept]),
+    // the issuer's list first for both: it is the only authority on either
+    dec: pick('dec', [list, feed, kept]),
+    logo: pick('logo', [list, feed, kept])
+  };
 }
 async function learnAsset(key){
   await cl8yList();
@@ -189,6 +213,9 @@ async function deepestLeg(pools, from, to, cap){
 
 async function mapPrice(key){
   if (!key || key === LUNC_KEY) return null;
+  // decimals before arithmetic: the list is where 18 comes from, and a price
+  // computed at 6 is out by a factor of a trillion
+  await cl8yList();
 
   const direct = poolsBetween(key, LUNC_KEY);
   if (direct.length) {
