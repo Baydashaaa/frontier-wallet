@@ -4,12 +4,12 @@
 // пул сам умеет ответить, сколько отдаст за конкретную сумму, с учётом
 // проскальзывания и комиссии. Считать это самому - значит показать одно
 // число, а получить другое.
-import { amt, fmt, iconHTML, paintIcons, usd } from './chain.js?v=7e6220a6';
-import { $, go, tap } from './shell.js?v=7e6220a6';
-import { assetOf, directPeers, gdInfo, poolPrice, poolsBetween, reserves, simulateSwap } from './market.js?v=7e6220a6';
-import { fiatOf, heldTokens, refreshBalances } from './tokens.js?v=7e6220a6';
-import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=7e6220a6';
-import { S } from './state.js?v=7e6220a6';
+import { amt, fmt, iconHTML, paintIcons, usd } from './chain.js?v=2df7b8f8';
+import { $, go, tap } from './shell.js?v=2df7b8f8';
+import { assetOf, directPeers, gdInfo, poolPrice, poolsBetween, reserves, simulateSwap } from './market.js?v=2df7b8f8';
+import { fiatOf, heldTokens, refreshBalances } from './tokens.js?v=2df7b8f8';
+import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=2df7b8f8';
+import { S } from './state.js?v=2df7b8f8';
 
 const LUNC = { sym: 'LUNC', denom: 'uluna', dec: 6, native: true };
 let FROM = LUNC, TO = null, TIMER = null, SEQ = 0;
@@ -55,10 +55,24 @@ const THIN_POOL = 50;      // dollars of liquidity, from the market map
 // Tradeable means the map knows a pool holding it. Not "has a route to LUNC",
 // which is what this used to mean and why a token with three healthy pools of
 // its own counted as unswappable.
-function peersOf(t){
-  return directPeers(keyOf(t)).filter(p => p.liq >= THIN_POOL && !LEGACY(p.key.slice(7)));
+// Everything with a pool, however small. What you own you must be able to
+// sell: a shallow pool is a bad price, not a locked door, and hiding the row
+// leaves a balance on the main screen with no way to act on it. UST1 trades
+// only against cUSTC and that pool is small, which is exactly the case the
+// threshold was quietly deciding on the owner's behalf.
+function allPeersOf(t){
+  return directPeers(keyOf(t)).filter(p => !LEGACY(p.key.slice(7)));
 }
-const swappable = t => !!t && !LEGACY(t.denom) && peersOf(t).length > 0;
+
+// The destination list is a different question. Sending someone into a pool too
+// thin to absorb the trade is offering a trap, and there is normally somewhere
+// better to go - but if there is not, a thin pool beats no list at all.
+function peersOf(t){
+  const all = allPeersOf(t);
+  const deep = all.filter(p => p.liq >= THIN_POOL);
+  return deep.length ? deep : all;
+}
+const swappable = t => !!t && !LEGACY(t.denom) && allPeersOf(t).length > 0;
 
 function decOf(t){
   const d = Number(t && t.dec);

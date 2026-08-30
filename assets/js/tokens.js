@@ -1,6 +1,6 @@
-import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=7e6220a6';
-import { DEC, assetOf, cacheGet, cacheGetStale, cacheSet, graph, graphReady, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=7e6220a6';
-import { $, go } from './shell.js?v=7e6220a6';
+import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=2df7b8f8';
+import { DEC, assetOf, cacheGet, cacheGetStale, cacheSet, graph, graphReady, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=2df7b8f8';
+import { $, go } from './shell.js?v=2df7b8f8';
 
 // keep=true means this contract is on the address's list, so it earns a row
 // even at zero. Only an unknown contract has to prove itself with a balance.
