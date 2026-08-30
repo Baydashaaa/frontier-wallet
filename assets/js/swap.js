@@ -4,12 +4,12 @@
 // пул сам умеет ответить, сколько отдаст за конкретную сумму, с учётом
 // проскальзывания и комиссии. Считать это самому - значит показать одно
 // число, а получить другое.
-import { amt, fmt, iconHTML, paintIcons, usd } from './chain.js?v=8846e8d2';
-import { $, go, tap } from './shell.js?v=8846e8d2';
-import { assetOf, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, poolPrice, poolsBetween, reserves, simulateSwap } from './market.js?v=8846e8d2';
-import { fiatOf, heldTokens, refreshBalances } from './tokens.js?v=8846e8d2';
-import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=8846e8d2';
-import { S } from './state.js?v=8846e8d2';
+import { amt, fmt, iconHTML, paintIcons, usd } from './chain.js?v=08b7c369';
+import { $, go, tap } from './shell.js?v=08b7c369';
+import { assetOf, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, poolPrice, poolsBetween, reserves, simulateSwap } from './market.js?v=08b7c369';
+import { fiatOf, heldTokens, refreshBalances } from './tokens.js?v=08b7c369';
+import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=08b7c369';
+import { S } from './state.js?v=08b7c369';
 
 const LUNC = { sym: 'LUNC', denom: 'uluna', dec: 6, native: true };
 let FROM = LUNC, TO = null, TIMER = null, SEQ = 0;
@@ -348,14 +348,21 @@ async function quote(){
   const raw = toRaw($('#sw-amt').value, dFrom);
 
   try {
+    // A pool that will not answer is one fewer option, not an error - but when
+    // every one of them refuses, what they said is the only thing that explains
+    // why, and it used to be thrown away. Two rounds of guessing a contract's
+    // dialect went into finding that out by hand.
+    const refused = [];
     const quotes = (await Promise.all(pools.map(function (p) {
       return simulateSwap(p.pair, keyOf(FROM), raw, p.dex)
         .then(function (x) { return { pair: p.pair, dialect: x.dialect, d: x }; })
-        // a pool that will not answer is not an error, it is one fewer option
-        .catch(function () { return null; });
+        .catch(function (e) {
+          refused.push(String(e && e.message ? e.message : e));
+          return null;
+        });
     }))).filter(function (q) { return q && Number(q.d.return_amount) > 0; });
     if (my !== SEQ) return;                       // ответ на устаревший ввод
-    if (!quotes.length) throw new Error('no pool would quote this amount');
+    if (!quotes.length) throw new Error(refused[0] || 'no pool would quote this amount');
     quotes.sort(function (a, b) { return Number(b.d.return_amount) - Number(a.d.return_amount); });
     pair = quotes[0].pair;
     const dialect = quotes[0].dialect;
@@ -392,7 +399,11 @@ async function quote(){
       // a percentage is an argument; the tokens it costs is a fact
       { k: 'Slippage costs you', v: fmt(spread) + ' ' + TO.sym,
         tone: pct >= 5 ? 'bad' : pct >= 1 ? 'warn' : '' },
-      { k: 'Pool fee', v: fmt(fee) + ' ' + TO.sym },
+      // as a share of what the trade was worth before it was taken. CL8Y sits
+      // at 1.8% against the usual 0.3, and the number in tokens hides that
+      { k: 'Pool fee', v: fmt(fee) + ' ' + TO.sym +
+        (got + fee > 0 ? ' \u00b7 ' + (fee / (got + fee) * 100).toFixed(2) + '%' : ''),
+        tone: got + fee > 0 && fee / (got + fee) > 0.01 ? 'warn' : '' },
       { k: 'Pool depth', v: DEPTH[pair] ? fmt(DEPTH[pair]) + ' ' + FROM.sym : 'reading',
         tone: DEPTH[pair] && DEPTH[pair] < v * 20 ? 'warn' : '' },
       { k: 'Pools asked', v: quotes.length + ' of ' + pools.length +
@@ -405,7 +416,8 @@ async function quote(){
   } catch (e) {
     if (my !== SEQ) return;
     out.textContent = '-'; out.classList.add('dim');
-    detail([{ k: 'Pool', v: 'did not answer', tone: 'bad' }]);
+    const why = String(e && e.message ? e.message : e);
+    detail([{ k: 'Pool', v: why.slice(0, 90), tone: 'bad' }]);
     console.error('[swap]', e);
   }
 }
@@ -525,10 +537,15 @@ if (btn) btn.addEventListener('click', () => { fillPickers(); go('swap'); });
 // itself enforces rather than recomputes.
 function envelope(){
   const gd = QUOTE.dialect === 'gd';
+  const cl = QUOTE.dialect === 'cl';
   // a floor, so rounding never pushes the guard above what was quoted
   const floor = String(Math.floor(Number(QUOTE.returnRaw) * (1 - SLIP)));
   const guard = gd
     ? { offer_amount: QUOTE.offerRaw, min_receive: floor, deadline: Date.now() + 120000 }
+    : cl
+    // seconds, not milliseconds - and no belief_price, which appears in none of
+    // the trades this contract has taken
+    ? { max_spread: String(SLIP), deadline: Math.floor(Date.now() / 1000) + 120 }
     : { belief_price: (Number(QUOTE.offerRaw) / Number(QUOTE.returnRaw)).toFixed(18),
         max_spread: String(SLIP) };
 

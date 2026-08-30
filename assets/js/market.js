@@ -1,4 +1,4 @@
-import { EXTRA_PAIRS, FACTORIES, LCD, amt, getJSON, smart } from './chain.js?v=8846e8d2';
+import { EXTRA_PAIRS, FACTORIES, LCD, amt, getJSON, smart } from './chain.js?v=08b7c369';
 
 /* ---------------- discovery and pricing ----------------
    The chain has no "which CW20 does this address hold" endpoint. Balances live
@@ -157,16 +157,44 @@ const gdInfo = key => key.slice(0, 5) === 'cw20:'
   ? { cw20: key.slice(5) }
   : { native: key.slice(7) };
 
-const simMsg = (d, key, raw) => d === 'gd'
-  ? { simulate_swap: { offer_asset: gdInfo(key), offer_amount: raw } }
-  : { simulation: { offer_asset: { info: tsInfo(key), amount: raw } } };
+/* Three dialects now, and the third is a different kind of thing. A CL8Y pool
+   is dex_common::pair: a constant product curve with a limit order book beside
+   it, and `hybrid_simulation` prices a trade across both. The split is the
+   caller's to make - pool_input and book_input have to add up to the offer.
+
+   All of it goes to the pool. On the pair this was worked out against, the
+   curve alone returned more than the book did, and it is the half that behaves
+   predictably: max_maker_fills at zero means no maker order is touched, so the
+   gas is bounded and the quote cannot be moved by someone else's order landing
+   first. Splitting the offer would need the execution to repeat the same split
+   the quote used, or the trade returns something other than what was shown -
+   that is a feature with its own failure mode, not a default. */
+const clHybrid = raw => ({
+  pool_input: raw,
+  book_input: '0',
+  max_maker_fills: 0,
+  book_start_hint: null
+});
+
+const simMsg = (d, key, raw) =>
+  d === 'gd' ? { simulate_swap: { offer_asset: gdInfo(key), offer_amount: raw } } :
+  d === 'cl' ? { hybrid_simulation: { offer_asset: { info: tsInfo(key), amount: raw },
+                                      hybrid: clHybrid(raw) } } :
+  { simulation: { offer_asset: { info: tsInfo(key), amount: raw } } };
 
 // A pool's code does not change, so which dialect it answers to is worth
 // learning once and keeping. The map's dex name is only the first guess; the
 // pool itself is the authority.
+const DIALECTS = ['ts', 'gd', 'cl'];
 async function simulateSwap(pair, offerKey, raw, guess){
   const known = cacheGetStale('dex:' + pair);
-  const order = (known || guess) === 'gd' ? ['gd', 'ts'] : ['ts', 'gd'];
+  const first = known || guess;
+  // the remembered one, or the map's guess, then the others - and whichever
+  // answers is remembered against this pool for good, because a pool's code
+  // does not change
+  const order = DIALECTS.indexOf(first) >= 0
+    ? [first].concat(DIALECTS.filter(d => d !== first))
+    : DIALECTS.slice();
   let last = null;
   for (const d of order) {
     try {
