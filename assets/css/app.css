@@ -109,6 +109,10 @@ h1{font-family:'Rajdhani',sans-serif;font-weight:700;font-size:27px;color:#fff;
 
 label{display:block;font-size:11px;letter-spacing:.15em;text-transform:uppercase;
   color:var(--muted);margin-bottom:8px}
+/* Every text field, not only the password one. The amount and memo on Send
+   were falling through to the browser's own styling - white boxes in the
+   middle of a dark screen. */
+input[type=text],input[type=email],input[type=number],input[type=search],
 input[type=password],textarea{width:100%;background:rgba(123,92,255,.04);
   border:1px solid var(--border);border-radius:12px;color:var(--text);
   font-family:inherit;font-size:15px;padding:14px 15px;outline:none;
@@ -409,6 +413,25 @@ textarea{resize:none;min-height:110px;line-height:1.8}
 .sw-line b{font-family:'Rajdhani',sans-serif;font-weight:600;color:#E8F0FF}
 .sw-line.warn b{color:var(--gold)}
 .sw-line.bad b{color:var(--red)}
+
+/* ---- receive ---- */
+/* The code sits on white because that is what a camera expects; every other
+   surface here is dark, so it gets a card of its own rather than a hole. */
+.qr{display:flex;align-items:center;justify-content:center;
+  width:min(260px,68vw);aspect-ratio:1;margin:22px auto 18px;
+  background:#fff;border-radius:18px;padding:12px;
+  box-shadow:0 12px 40px -18px rgba(0,212,255,.5)}
+.qr svg{width:100%;height:100%;display:block}
+.qr .spin{border-top-color:#12182A;border-color:rgba(0,0,0,.15);border-top-color:#12182A}
+.rc-addr{margin:0 auto 18px;max-width:340px;padding:12px 14px;border-radius:12px;
+  background:var(--surface2);border:1px solid var(--border);
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;line-height:1.7;
+  color:var(--text);word-break:break-all;text-align:center}
+
+/* the header address is a button now, and must not look like one */
+button.waddr{background:none;border:0;padding:0;font:inherit;color:inherit;
+  cursor:pointer;text-align:left}
+button.waddr:active{opacity:.6}
 /* the one figure on the review screen that is a promise */
 .sw-line.big{align-items:baseline;margin:2px 0 4px}
 .sw-line.big span{font-size:13px;color:#E8F0FF}

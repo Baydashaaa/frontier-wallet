@@ -1,10 +1,10 @@
-import { amt, fmt } from './chain.js?v=7c0d8159';
-import { finish } from './crypto.js?v=7c0d8159';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=7c0d8159';
-import { $, bip39, buzz, dropKeyboard, go, libs, report, tap } from './shell.js?v=7c0d8159';
-import { S } from './state.js?v=7c0d8159';
-import { Store, decryptSeed, saveWallet, short, showStore } from './storage.js?v=7c0d8159';
-import { luncRaw, openWallet } from './tokens.js?v=7c0d8159';
+import { amt, fmt } from './chain.js?v=48d619ff';
+import { finish } from './crypto.js?v=48d619ff';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=48d619ff';
+import { $, bip39, buzz, dropKeyboard, go, libs, report, tap, tg } from './shell.js?v=48d619ff';
+import { S } from './state.js?v=48d619ff';
+import { Store, decryptSeed, saveWallet, short, showStore } from './storage.js?v=48d619ff';
+import { luncRaw, openWallet } from './tokens.js?v=48d619ff';
 
 /* ---------------- unlock ---------------- */
 let tries = 0;
@@ -44,11 +44,74 @@ $('#pu').addEventListener('input', async () => {
 document.querySelectorAll('#tabs .tab').forEach(b =>
   b.addEventListener('click', () => go(b.dataset.tab)));
 $('#act-stake').addEventListener('click', () => go('stake'));
+/* Receive used to be an alert with a bech32 string in it.
+
+   The encoder is loaded when this screen opens and not before: it is fifty
+   kilobytes that most sessions never need, and Receive is a deliberate act
+   rather than something the wallet does on the way past. */
+let QR = null;
+async function drawQR(addr){
+  const box = $('#rc-qr');
+  if (!box) return;
+  box.innerHTML = '<span class="spin"></span>';
+  try {
+    if (!QR) QR = (await import('../../vendor/qrcode.mjs')).default;
+    const q = QR(0, 'M');
+    q.addData(addr);
+    q.make();
+    // an svg rather than an image: it stays sharp at any size, and a blurred
+    // qr is one a camera has to be coaxed into reading
+    box.innerHTML = q.createSvgTag({ cellSize: 4, margin: 4, scalable: true });
+  } catch (e) {
+    box.textContent = 'Could not draw the code. The address below still works.';
+    report('qr', e);
+  }
+}
+
+/* Copying, and saying so.
+   The clipboard call can be refused - an insecure context, a webview that
+   never implemented it - and a button that silently does nothing teaches
+   people to distrust every other button. */
+async function copyText(text, btn, done){
+  const back = btn.textContent;
+  try {
+    if (navigator.clipboard && window.isSecureContext) await navigator.clipboard.writeText(text);
+    else throw new Error('no clipboard');
+    buzz('success');
+    btn.textContent = done || 'Copied';
+  } catch (e) {
+    btn.textContent = 'Select it by hand, copying was refused';
+  }
+  setTimeout(function () { btn.textContent = back; }, 1600);
+}
+
 $('#act-recv').addEventListener('click', () => {
   const a = S.SAVED && S.SAVED.addr;
-  if (a && navigator.clipboard) navigator.clipboard.writeText(a).then(() => buzz('success'));
-  alert(a || 'no address');
+  if (!a) return;
+  $('#rc-addr').textContent = a;
+  go('receive');
+  drawQR(a);
 });
+
+$('#rc-copy').addEventListener('click', function () {
+  const a = S.SAVED && S.SAVED.addr;
+  if (a) copyText(a, this, 'Copied to clipboard');
+});
+
+$('#home-addr').addEventListener('click', function () {
+  const a = S.SAVED && S.SAVED.addr;
+  if (a) copyText(a, this, 'Copied');
+});
+
+/* A way out, where one exists.
+   Telegram can close a Mini App; a browser tab cannot close itself, so outside
+   Telegram the row is simply not there. */
+(function () {
+  const row = $('#btn-close');
+  if (!row || !tg || typeof tg.close !== 'function') return;
+  row.hidden = false;
+  row.addEventListener('click', function () { tap(); try { tg.close(); } catch (e) {} });
+})();
 $('#act-send').addEventListener('click', () => {
   // hand the send screen the balance it is allowed to spend
   const el = $('#send-avail');
