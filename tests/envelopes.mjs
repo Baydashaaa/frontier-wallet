@@ -214,6 +214,50 @@ group('reading a saved tolerance back');
      api.savedSlip(() => { throw new Error('blocked'); }) === 0.01);
 }
 
+group('why a trade was refused');
+{
+  // Every list of message type urls ends with one the chain has moved on from,
+  // so the last error is always the node saying it has never heard of it. That
+  // was the one being shown, and it pointed at node internals rather than at
+  // the thing the person could change.
+  const tx = fs.readFileSync(path.join(SRC, 'tx.js'), 'utf8');
+  const api = new Function([liftLine(tx, 'const noHandler ='),
+                            lift(tx, 'function plainRefusal('),
+                            lift(tx, 'function refusalOf('),
+                            'return { noHandler, plainRefusal, refusalOf };'].join('\n'))();
+
+  // the choice itself: of everything the node said, which part is about the trade
+  const said = [
+    { message: 'no message handler found for "legacy.MsgExecuteContract: unknown request' },
+    { message: 'Operation exceeds max spread limit' }
+  ];
+  ok('a real refusal is preferred whatever order it arrived in',
+     api.refusalOf(said) === 'Operation exceeds max spread limit');
+  ok('and still is when it came first',
+     api.refusalOf(said.slice().reverse()) === 'Operation exceeds max spread limit');
+  ok('when the node understood none of them, the last is shown anyway',
+     api.refusalOf([{ message: 'unknown request A' }, { message: 'unknown request B' }])
+       === 'unknown request B');
+
+  ok('a node with no handler for a type is recognised',
+     api.noHandler('no message handler found for "legacy.MsgExecuteContract: unknown request'));
+  ok('a real refusal is not', !api.noHandler('Operation exceeds max spread limit'));
+
+  const spread = api.plainRefusal('dispatch: submessages: Operation exceeds max spread limit');
+  ok('a spread refusal names the tolerance', /tolerance/i.test(spread), spread);
+  ok('and says what to do about it', /smaller amount/i.test(spread), spread);
+
+  const minr = api.plainRefusal('assertion failed; minimum receive amount');
+  ok('a minimum-return refusal is explained too', /minimum/i.test(minr), minr);
+
+  ok('funds are explained in plain words',
+     /not enough/i.test(api.plainRefusal('insufficient funds for fee')));
+  ok('anything else is passed through as it came',
+     api.plainRefusal('some new thing') === 'some new thing');
+  ok('and nothing at all still says something',
+     api.plainRefusal('') === 'unknown reason');
+}
+
 group('the review screen leads with the promise');
 {
   // Two numbers, only one of which anyone is owed. Leading with the expectation

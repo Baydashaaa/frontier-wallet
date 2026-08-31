@@ -1,7 +1,7 @@
-import { LCD, amt, fmt, getJSON } from './chain.js?v=7146bd19';
-import { $, buzz, go, tap } from './shell.js?v=7146bd19';
-import { S } from './state.js?v=7146bd19';
-import { refreshBalances } from './tokens.js?v=7146bd19';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=3710cbd7';
+import { $, buzz, go, tap } from './shell.js?v=3710cbd7';
+import { S } from './state.js?v=3710cbd7';
+import { refreshBalances } from './tokens.js?v=3710cbd7';
 
 /* ---------------- protobuf ----------------
    Written out by hand because cosmjs is several hundred kilobytes and this is
@@ -383,18 +383,57 @@ function execTx(url, sender, steps, key, seq, feeCoins, gas){
 }
 
 // Everything a real swap would do, stopping one step short of signing.
+/* A node that has never heard of a message type says so, and that answer is
+   about the node rather than about the trade. Every list of type urls ends with
+   one the chain has moved on from, so the last error is always the least
+   useful one there is - and it was the one being shown. */
+const noHandler = m => /no message handler|unknown request|unknown message type/i
+  .test(String(m || ''));
+
+/* What a contract says when it refuses, in words.
+   These are the two refusals a swap actually produces, and both are things
+   someone can do something about - which the raw text does not make obvious. */
+function plainRefusal(msg){
+  const s = String(msg || '');
+  if (/max.?spread|exceeds.*spread|slippage/i.test(s)) {
+    return 'the price would move further than your slippage tolerance allows. ' +
+           'Raise it, or trade a smaller amount.';
+  }
+  if (/minimum.?receive|min_receive|assertion.*minimum/i.test(s)) {
+    return 'the pool would return less than the minimum this trade guarantees. ' +
+           'Raise the tolerance, or trade a smaller amount.';
+  }
+  if (/insufficient funds|insufficient balance/i.test(s)) {
+    return 'there is not enough here to cover the trade and its fee.';
+  }
+  return s || 'unknown reason';
+}
+
+/* Of everything the node said, the part that is about the trade.
+   Kept out of the loop so it can be checked: which refusal gets shown is the
+   whole of this fix, and a choice made inside a catch block is a choice nobody
+   can test. */
+function refusalOf(errors){
+  for (const e of errors) {
+    const m = e && e.message;
+    if (!noHandler(m)) return m;
+  }
+  const lastOne = errors[errors.length - 1];
+  return lastOne && lastOne.message;
+}
+
 async function execPlan(from, steps, mnemonic){
   const [acc, key] = await Promise.all([account(from), keyOf(mnemonic)]);
-  let used = 0, url = null, last = null;
+  let used = 0, url = null;
+  const refused = [];
   for (const u of EXEC_URLS) {
     // the ceiling has to cover every message, not one of them
     const probe = execTx(u, from, steps, key.pub, acc.seq,
       [{ denom: 'uluna', amount: '1000000' }], 900000 * steps.length);
     try { used = await simulateGas(probe.body, probe.auth); url = u; break; }
-    catch (e) { last = e; }
+    catch (e) { refused.push(e); }
   }
-  if (!url) throw new Error('the node refused this message: ' +
-    (last && last.message ? last.message : 'unknown reason'));
+  if (!url) throw new Error(plainRefusal(refusalOf(refused)));
   const gas = Math.ceil(used * GAS_SAFETY);
   return { acc: acc, key: key, url: url, used: used,
            gas: gas, gasFee: Math.ceil(gas * GAS_PRICE) };
