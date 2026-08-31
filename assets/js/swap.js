@@ -4,12 +4,12 @@
 // пул сам умеет ответить, сколько отдаст за конкретную сумму, с учётом
 // проскальзывания и комиссии. Считать это самому - значит показать одно
 // число, а получить другое.
-import { DEBUG, THIN_LUNC, amt, dbg, fmt, iconHTML, paintIcons, usd } from './chain.js?v=48d619ff';
-import { $, go, tap } from './shell.js?v=48d619ff';
-import { DEC, assetOf, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, midsBetween, poolsBetween, reserves, simulateSwap } from './market.js?v=48d619ff';
-import { fiatOf, heldTokens, refreshBalances, remember } from './tokens.js?v=48d619ff';
-import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=48d619ff';
-import { S } from './state.js?v=48d619ff';
+import { DEBUG, THIN_LUNC, amt, dbg, fmt, iconHTML, paintIcons, usd } from './chain.js?v=61a6a5aa';
+import { $, go, tap } from './shell.js?v=61a6a5aa';
+import { DEC, assetOf, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, midsBetween, poolsBetween, reserves, simulateSwap } from './market.js?v=61a6a5aa';
+import { fiatOf, heldTokens, refreshBalances, remember } from './tokens.js?v=61a6a5aa';
+import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=61a6a5aa';
+import { S } from './state.js?v=61a6a5aa';
 
 const LUNC = { sym: 'LUNC', denom: 'uluna', dec: 6, native: true };
 let FROM = LUNC, TO = null, TIMER = null, SEQ = 0;
@@ -542,13 +542,18 @@ function result(state, title, note, hash){
     '</div>';
 }
 
-function detail(lines){
-  $('#sw-detail').innerHTML = lines.map(function (l) {
+// the same rows are wanted in two places now, so the markup is one function
+function lineHTML(lines){
+  return lines.map(function (l) {
     return '<div class="sw-line' + (l.tone ? ' ' + l.tone : '') +
       (l.big ? ' big' : '') + '">' +
       '<span>' + l.k + '</span><b>' + l.v + '</b></div>' +
       (l.note ? '<p class="sw-note">' + l.note + '</p>' : '');
   }).join('');
+}
+
+function detail(lines){
+  $('#sw-detail').innerHTML = lineHTML(lines);
 }
 
 /* What the dollar figures say, against what the trade actually costs.
@@ -986,87 +991,134 @@ function envelope(from, q){
   };
 }
 
+/* The two questions, asked separately.
+
+   One button used to be both: press it once and it checked, press the same
+   button again and it signed. The words changed but the button did not move,
+   and the second press is the one that spends money. A confirmation someone
+   can walk into by pressing twice is not a confirmation.
+
+   So the check stays on the screen and the signature moves into a panel that
+   has to be opened, read and answered - with what is being paid, what comes
+   back at worst, and a way out that is the same size as the way in. */
+function confirmLines(est){
+  const min = QUOTE.got * (1 - SLIP);
+  const lines = [
+    { k: 'You receive at least', v: fmt(min) + ' ' + TO.sym, big: true },
+    { k: 'Expected, if the pool holds',
+      v: fmt(QUOTE.got) + ' ' + TO.sym + ' \u00b7 ' + slipText(SLIP) + ' tolerance' }
+  ];
+  if (QUOTE.hops === 2) {
+    // both messages commit together or neither does, and the middle token
+    // exists only in between - except for the part that stays
+    lines.push({ k: 'Route', v: FROM.sym + ' \u2192 ' + QUOTE.mid.sym + ' \u2192 ' + TO.sym });
+    lines.push({ k: 'Steps', v: '2, in one transaction' });
+    lines.push({ k: 'Leaves in your wallet',
+                 v: fmt(QUOTE.residue) + ' ' + QUOTE.mid.sym, tone: 'warn' });
+  }
+  if (QUOTE.pct >= 1) {
+    lines.push({ k: 'This trade costs', v: QUOTE.pct.toFixed(2) + '%',
+                 tone: QUOTE.pct >= 5 ? 'bad' : 'warn' });
+  }
+  lines.push({ k: 'Network fee', v: fmt(est.gasFee / 1e6) + ' LUNC' });
+  return lines;
+}
+
+function openConfirm(est){
+  const v = parseFloat(String($('#sw-amt').value).replace(',', '.')) || 0;
+  const pf = unitUsd(FROM), pt = unitUsd(TO);
+  $('#cf-from').textContent = fmt(v) + ' ' + FROM.sym;
+  $('#cf-to').textContent = fmt(QUOTE.got) + ' ' + TO.sym;
+  $('#cf-from-usd').textContent = pf !== null ? usd(v * pf) : '';
+  $('#cf-to-usd').textContent = pt !== null ? usd(QUOTE.got * pt) : '';
+  $('#cf-from-ico').innerHTML = iconHTML(FROM);
+  $('#cf-to-ico').innerHTML = iconHTML(TO);
+  paintIcons($('#cf-pair'));
+  $('#cf-lines').innerHTML = lineHTML(confirmLines(est));
+  // the danger is in the amount, so it is the button that carries it
+  $('#cf-go').textContent = QUOTE.pct >= 5
+    ? 'Swap anyway, losing ' + QUOTE.pct.toFixed(1) + '%'
+    : 'Swap ' + FROM.sym + ' for ' + TO.sym;
+  $('#cf-go').classList.toggle('risky', QUOTE.pct >= 5);
+  $('#sw-confirm').hidden = false;
+}
+
+function closeConfirm(){
+  $('#sw-confirm').hidden = true;
+}
+
 $('#sw-go').addEventListener('click', async () => {
   if (BUSY || !QUOTE || !S.MNEMONIC) return;
   tap();
   BUSY = true;
   const b = $('#sw-go');
-
   try {
-    if (!PLAN) {
-      // the review: the node runs the message and prices the gas, which is
-      // also what proves the transaction was built correctly
-      b.textContent = 'Checking with the node';
-      const plan = steps();
-      const est = await dryRunSwap(addrOf(), plan, S.MNEMONIC);
-      PLAN = { steps: plan, est: est };
-      const min = QUOTE.got * (1 - SLIP);
-      /* The promise first, in the largest type on the screen.
-         What a pool is expected to return and what it is obliged to return are
-         two different numbers, and only the second is owed to anyone. Leading
-         with the first meant that a pool moving between the check and the
-         signature delivered less than the figure someone had just read in bold
-         - warned about, in the line underneath, which is not the same as told. */
-      const review = [
-        { k: 'You receive at least', v: fmt(min) + ' ' + TO.sym, big: true },
-        { k: 'Expected, if the pool holds',
-          v: fmt(QUOTE.got) + ' ' + TO.sym + ' \u00b7 ' + slipText(SLIP) + ' tolerance' }
-      ];
-      if (QUOTE.hops === 2) {
-        // both messages commit together or neither does, and the middle token
-        // exists only in between - except for the part that stays
-        review.push({ k: 'Steps', v: '2, in one transaction' });
-        review.push({ k: 'Leaves in your wallet',
-                      v: fmt(QUOTE.residue) + ' ' + QUOTE.mid.sym, tone: 'warn' });
-      }
-      review.push({ k: 'Network fee', v: fmt(est.gasFee / 1e6) + ' LUNC' });
-      review.push({ k: 'Gas', v: String(est.gas) });
-      detail(review);
-      armGo(QUOTE && PLAN && QUOTE.pct >= 5
-        ? 'Swap anyway, losing ' + QUOTE.pct.toFixed(1) + '%'
-        : 'Swap ' + FROM.sym + ' for ' + TO.sym, true);
-    } else {
-      b.textContent = 'Signing';
-      const bought = TO, spent = FROM, want = QUOTE.got, left = QUOTE.residue, mid = QUOTE.mid;
-      const res = await sendSwap(addrOf(), PLAN.steps, S.MNEMONIC);
-
-      // Waiting is a state, not an absence of one. It used to look identical to
-      // the quote it replaced - the same small grey rows in the same place -
-      // and there was no moment where anything said it had worked.
-      result('sent', 'Sent to the chain', 'Waiting for it to be included in a block.',
-             res.hash);
-      armGo('Sent', false);
-
-      const done = await res.wait();
-
-      // What was just bought is not in the registry, so nothing would ask for
-      // its balance until the daily sweep came round. The wallet knows exactly
-      // what it just acquired.
-      remember(addrOf(), [bought.contract, mid && mid.contract]);
-      // the node can answer with state from a block earlier than the one that
-      // included this, so ask twice rather than show a stale number
-      refreshBalances(true);
-      setTimeout(function () { refreshBalances(true); }, 6000);
-
-      result(done ? 'done' : 'sent',
-             done ? 'Swapped' : 'Sent, not seen yet',
-             done
-               ? 'You received ' + fmt(want) + ' ' + bought.sym +
-                 (left ? ', and ' + fmt(left) + ' ' + mid.sym + ' stayed behind as expected.' : '.')
-               : 'The chain has not shown it yet. Activity will have it once it lands.',
-             res.hash);
-      QUOTE = null; PLAN = null;
-      $('#sw-amt').value = '';
-      $('#sw-out').textContent = '-';
-      armGo('Enter an amount', false);
-    }
+    // the node runs the message and prices the gas, which is also what proves
+    // the transaction was built correctly
+    b.textContent = 'Checking with the node';
+    const plan = steps();
+    const est = await dryRunSwap(addrOf(), plan, S.MNEMONIC);
+    PLAN = { steps: plan, est: est };
+    openConfirm(est);
+    armGo('Review this swap', true);
   } catch (e) {
     PLAN = null;
-    const m = String(e && e.message ? e.message : e);
-    detail([{ k: 'Stopped', v: m.slice(0, 90), tone: 'bad' }]);
+    detail([{ k: 'Stopped', v: String(e && e.message ? e.message : e).slice(0, 120), tone: 'bad' }]);
     armGo('Try again', true);
     console.error('[swap]', e);
   } finally {
+    BUSY = false;
+  }
+});
+
+$('#cf-cancel').addEventListener('click', () => { tap(); closeConfirm(); });
+$('#cf-x').addEventListener('click', () => { tap(); closeConfirm(); });
+
+$('#cf-go').addEventListener('click', async () => {
+  if (BUSY || !QUOTE || !PLAN || !S.MNEMONIC) return;
+  tap();
+  BUSY = true;
+  const b = $('#cf-go');
+  const bought = TO, want = QUOTE.got, left = QUOTE.residue, mid = QUOTE.mid;
+  try {
+    b.disabled = true;
+    b.textContent = 'Signing';
+    const res = await sendSwap(addrOf(), PLAN.steps, S.MNEMONIC);
+    closeConfirm();
+
+    // Waiting is a state, not an absence of one.
+    result('sent', 'Sent to the chain', 'Waiting for it to be included in a block.', res.hash);
+    armGo('Sent', false);
+
+    const done = await res.wait();
+
+    // What was just bought is not in the registry, so nothing would ask for its
+    // balance until the daily sweep came round.
+    remember(addrOf(), [bought.contract, mid && mid.contract]);
+    // the node can answer with state from a block earlier than the one that
+    // included this, so ask twice rather than show a stale number
+    refreshBalances(true);
+    setTimeout(function () { refreshBalances(true); }, 6000);
+
+    result(done ? 'done' : 'sent',
+           done ? 'Swapped' : 'Sent, not seen yet',
+           done
+             ? 'You received ' + fmt(want) + ' ' + bought.sym +
+               (left ? ', and ' + fmt(left) + ' ' + mid.sym + ' stayed behind as expected.' : '.')
+             : 'The chain has not shown it yet. Activity will have it once it lands.',
+           res.hash);
+    QUOTE = null; PLAN = null;
+    $('#sw-amt').value = '';
+    $('#sw-out').textContent = '-';
+    armGo('Enter an amount', false);
+  } catch (e) {
+    PLAN = null;
+    closeConfirm();
+    detail([{ k: 'Stopped', v: String(e && e.message ? e.message : e).slice(0, 120), tone: 'bad' }]);
+    armGo('Try again', true);
+    console.error('[swap]', e);
+  } finally {
+    b.disabled = false;
     BUSY = false;
   }
 });

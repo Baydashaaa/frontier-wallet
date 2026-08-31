@@ -258,19 +258,29 @@ group('why a trade was refused');
      api.plainRefusal('') === 'unknown reason');
 }
 
-group('the review screen leads with the promise');
+group('the confirmation panel leads with the promise');
 {
   // Two numbers, only one of which anyone is owed. Leading with the expectation
   // meant a pool that moved between the check and the signature delivered less
   // than the figure someone had just read in bold.
   const src = fs.readFileSync(path.join(SRC, 'swap.js'), 'utf8');
-  const block = src.slice(src.indexOf('const review = ['),
-                          src.indexOf(']', src.indexOf('const review = [')));
+  const block = lift(src, 'function confirmLines(');
   ok('the guaranteed figure comes first',
      block.indexOf('at least') < block.indexOf('Expected'), block.slice(0, 60));
   ok('and it is the one set in large type', /at least[^}]*big: true/.test(block));
   ok('the expectation is not', !/Expected[^}]*big: true/.test(block));
   ok('the tolerance is named beside it', block.indexOf('slipText(SLIP)') >= 0);
+
+  // the second press used to be on the same button as the first, in the same
+  // place, and it was the one that spent the money
+  const wire = fs.readFileSync(path.join(SRC, 'swap.js'), 'utf8');
+  ok('signing is wired to the confirmation panel, not to the screen button',
+     /\$\('#cf-go'\)[^;]*addEventListener/.test(wire) &&
+     /sendSwap/.test(lift(wire, "$('#cf-go').addEventListener")));
+  ok('the screen button no longer signs anything',
+     !/sendSwap/.test(lift(wire, "$('#sw-go').addEventListener")));
+  ok('and the panel offers a way out beside the way in',
+     /\$\('#cf-cancel'\)[^;]*addEventListener/.test(wire));
 }
 
 group('two steps, one transaction');

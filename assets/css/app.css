@@ -414,6 +414,23 @@ textarea{resize:none;min-height:110px;line-height:1.8}
 .sw-line.warn b{color:var(--gold)}
 .sw-line.bad b{color:var(--red)}
 
+/* ---- confirm ---- */
+/* What is being paid and what comes back, before anything else on the panel.
+   The numbers a person checks are the two amounts; everything under them is
+   detail they may or may not read. */
+.cf-pair{display:flex;align-items:center;gap:12px;margin:2px 0 14px;
+  padding:14px;border-radius:14px;background:var(--surface2);border:1px solid var(--border)}
+.cf-side{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:6px;
+  text-align:center}
+.cf-side b{font-size:16px;font-weight:600;color:#E8F0FF;word-break:break-all;line-height:1.3}
+.cf-side i{font-family:'Rajdhani',sans-serif;font-style:normal;font-size:12px;color:var(--muted)}
+.cf-ico .sym{width:34px;height:34px;font-size:14px}
+.cf-arrow{width:20px;height:20px;flex:none;fill:none;stroke:var(--accent2);
+  stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+#cf-lines{margin:0 2px 16px}
+/* a swap that costs five percent should not be one tap from an ordinary one */
+#cf-go.risky{background:linear-gradient(135deg,#FF6B8A,#C2255C)}
+
 /* ---- receive ---- */
 /* The code sits on white because that is what a camera expects; every other
    surface here is dark, so it gets a card of its own rather than a hole. */

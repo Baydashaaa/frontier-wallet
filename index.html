@@ -48,7 +48,7 @@
   #fw-splash .fw-seam{animation:none}
 }
 </style>
-<link rel="stylesheet" href="assets/css/app.css?v=48d619ff">
+<link rel="stylesheet" href="assets/css/app.css?v=61a6a5aa">
 </head>
 <body>
 <div id="rt"></div>
@@ -388,6 +388,30 @@
   <button class="btn solid" id="sw-go" disabled>Enter an amount</button>
   <button class="btn quiet" data-go="home">Back</button>
 
+  <div class="sw-sheet" id="sw-confirm" hidden>
+    <div class="sw-sheet-in">
+      <div class="sw-sheet-top"><span>Confirm swap</span>
+        <button class="sw-x" id="cf-x" type="button">Cancel</button></div>
+
+      <div class="cf-pair" id="cf-pair">
+        <div class="cf-side">
+          <span class="cf-ico" id="cf-from-ico"></span>
+          <b id="cf-from">-</b><i id="cf-from-usd"></i>
+        </div>
+        <svg class="cf-arrow" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>
+        <div class="cf-side">
+          <span class="cf-ico" id="cf-to-ico"></span>
+          <b id="cf-to">-</b><i id="cf-to-usd"></i>
+        </div>
+      </div>
+
+      <div class="sw-detail" id="cf-lines"></div>
+
+      <button class="btn solid" id="cf-go" type="button">Confirm</button>
+      <button class="btn quiet" id="cf-cancel" type="button">Cancel</button>
+    </div>
+  </div>
+
   <div class="sw-sheet" id="sw-sheet" hidden>
     <div class="sw-sheet-in">
       <div class="sw-sheet-top"><span>Choose a token</span>
@@ -493,10 +517,10 @@
 </section>
 
 <script src="vendor/telegram-web-app.js"></script>
-<script type="module" src="assets/js/app.js?v=48d619ff"></script>
-<script src="assets/js/ads.js?v=48d619ff"></script>
-<script type="module" src="assets/js/swap.js?v=48d619ff"></script>
-<script type="module" src="assets/js/activity.js?v=48d619ff"></script>
-<script type="module" src="assets/js/nft.js?v=48d619ff"></script>
+<script type="module" src="assets/js/app.js?v=61a6a5aa"></script>
+<script src="assets/js/ads.js?v=61a6a5aa"></script>
+<script type="module" src="assets/js/swap.js?v=61a6a5aa"></script>
+<script type="module" src="assets/js/activity.js?v=61a6a5aa"></script>
+<script type="module" src="assets/js/nft.js?v=61a6a5aa"></script>
 </body>
 </html>
