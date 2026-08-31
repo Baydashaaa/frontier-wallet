@@ -34,7 +34,8 @@ function liftLine(src, header){
   return src.slice(i, end + 1);
 }
 
-const SLIP = Number(swap.match(/const SLIP\s*=\s*([^;\n]+)/)[1]);
+// the default now lives inside savedSlip, which is where it belongs
+const SLIP = Number(swap.match(/function savedSlip\([\s\S]*?return ([\d.]+);/)[1]);
 const { mod } = await loadMarket();
 await mod.owMarket();
 await mod.graph();

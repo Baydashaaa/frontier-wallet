@@ -4,19 +4,38 @@
 // пул сам умеет ответить, сколько отдаст за конкретную сумму, с учётом
 // проскальзывания и комиссии. Считать это самому - значит показать одно
 // число, а получить другое.
-import { THIN_LUNC, amt, fmt, iconHTML, paintIcons, usd } from './chain.js?v=65f01143';
-import { $, go, tap } from './shell.js?v=65f01143';
-import { DEC, assetOf, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, midsBetween, poolsBetween, reserves, simulateSwap } from './market.js?v=65f01143';
-import { fiatOf, heldTokens, refreshBalances, remember } from './tokens.js?v=65f01143';
-import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=65f01143';
-import { S } from './state.js?v=65f01143';
+import { THIN_LUNC, amt, fmt, iconHTML, paintIcons, usd } from './chain.js?v=c06581d5';
+import { $, go, tap } from './shell.js?v=c06581d5';
+import { DEC, assetOf, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, midsBetween, poolsBetween, reserves, simulateSwap } from './market.js?v=c06581d5';
+import { fiatOf, heldTokens, refreshBalances, remember } from './tokens.js?v=c06581d5';
+import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=c06581d5';
+import { S } from './state.js?v=c06581d5';
 
 const LUNC = { sym: 'LUNC', denom: 'uluna', dec: 6, native: true };
 let FROM = LUNC, TO = null, TIMER = null, SEQ = 0;
 // A quote is only good for the pool state it was taken from, so a new
 // keystroke throws away the plan built from the old one.
 let QUOTE = null, PLAN = null, BUSY = false;
-const SLIP = 0.01;   // 1 percent, the number every leg of this is checked against
+/* How far a fill may drift before the pool refuses it.
+
+   Every leg of every trade is checked against this, and on a two step trade it
+   also sets how much of the middle token stays behind. Kept where it was put
+   last time, because someone who has chosen 0.5% once means it. */
+const SLIP_KEY = 'fw:slip';
+const SLIP_CHOICES = [0.001, 0.005, 0.01, 0.05];
+/* Reading it back is its own function so it can be checked: a stored value has
+   to be one of the offered ones, and a storage that refuses to answer must not
+   take the screen down with it. */
+function savedSlip(read){
+  try {
+    const v = Number(read(SLIP_KEY));
+    if (SLIP_CHOICES.indexOf(v) >= 0) return v;
+  } catch (e) {}
+  return 0.01;
+}
+let SLIP = savedSlip(function (k) { return localStorage.getItem(k); });
+
+const slipText = s => String(Number((s * 100).toFixed(3))) + '%';
 const addrOf = () => S.ADDR || (S.SAVED && S.SAVED.addr) || '';
 function armGo(text, on){
   const b = $('#sw-go');
@@ -248,7 +267,41 @@ function paintZones(){
       'costing you more than 1%.';
 }
 
+/* Built here rather than in the markup, like the search field: it belongs to
+   how this screen behaves and nowhere else. */
+function slipBox(){
+  if ($('#sw-slip')) return;
+  const host = $('#sw-detail');
+  if (!host || !host.parentNode) return;
+  const wrap = document.createElement('div');
+  wrap.id = 'sw-slip';
+  wrap.className = 'sw-slip';
+  wrap.innerHTML = '<span>Slippage tolerance</span><div class="sw-slip-opts">' +
+    SLIP_CHOICES.map(function (s) {
+      return '<button type="button" data-s="' + s + '"' +
+             (s === SLIP ? ' class="on"' : '') + '>' + slipText(s) + '</button>';
+    }).join('') + '</div>';
+  host.parentNode.insertBefore(wrap, host.nextSibling);
+
+  wrap.addEventListener('click', function (e) {
+    const b = e.target.closest('button[data-s]');
+    if (!b) return;
+    const s = Number(b.dataset.s);
+    if (!(s > 0) || s === SLIP) return;
+    SLIP = s;
+    try { localStorage.setItem(SLIP_KEY, String(s)); } catch (err) {}
+    wrap.querySelectorAll('button[data-s]').forEach(function (x) {
+      x.classList.toggle('on', Number(x.dataset.s) === SLIP);
+    });
+    // the guarantee changed, so anything already checked against the old one is
+    // no longer the plan
+    PLAN = null;
+    quote();
+  });
+}
+
 function fillPickers(){
+  slipBox();
   const peers = peersOf(FROM);
   // Both sides starting as LUNC is not a trade, and the old default did exactly
   // that whenever the wallet held nothing else priced against it.
@@ -859,7 +912,8 @@ $('#sw-go').addEventListener('click', async () => {
       const min = QUOTE.got * (1 - SLIP);
       const review = [
         { k: 'You receive', v: fmt(QUOTE.got) + ' ' + TO.sym },
-        { k: 'At worst', v: fmt(min) + ' ' + TO.sym, tone: 'warn' }
+        { k: 'At worst', v: fmt(min) + ' ' + TO.sym + ' \u00b7 ' + slipText(SLIP) + ' tolerance',
+          tone: 'warn' }
       ];
       if (QUOTE.hops === 2) {
         // both messages commit together or neither does, and the middle token

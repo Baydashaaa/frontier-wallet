@@ -40,13 +40,8 @@ function liftLine(src, header){
   return src.slice(i, end + 1);
 }
 
-function constant(name){
-  const m = swap.match(new RegExp('const ' + name + '\\s*=\\s*([^;\\n]+)'));
-  if (!m) throw new Error('constant not found: ' + name);
-  return m[1].trim();
-}
-
-const SLIP = Number(constant('SLIP'));
+// the default now lives inside savedSlip, which is where it belongs
+const SLIP = Number(swap.match(/function savedSlip\([\s\S]*?return ([\d.]+);/)[1]);
 const { mod } = await loadMarket();
 
 const src = [
@@ -146,6 +141,77 @@ group('envelopes: the two deadlines that look alike');
   ok('and they differ by about a thousand',
      Math.round(gd.deadline / cl.deadline) === 1000,
      String(gd.deadline / cl.deadline));
+}
+
+group('the tolerance is a setting, and the guard follows it');
+{
+  // The whole point of making it adjustable is that the promise sent to the
+  // pool changes with it. If the guard were pinned to a constant the control
+  // would be decoration.
+  function guardAt(slip){
+    const src = [
+      'const SLIP = ' + slip + ';',
+      liftLine(swap, 'const keyOf ='),
+      lift(swap, 'function envelope(')
+    ].join('\n') + '\nreturn { envelope };';
+    const q = { pair: 'terra1pool', dialect: 'gd', offerRaw: OFFER, returnRaw: RETURN };
+    const api = new Function('gdInfo', 'btoa', 'FROM', 'QUOTE', src)(mod.gdInfo, b64, TOK, q);
+    const e = api.envelope();
+    return JSON.parse(Buffer.from(e.msg.send.msg, 'base64').toString()).swap;
+  }
+
+  const tight = guardAt(0.001), loose = guardAt(0.05);
+  ok('a tighter tolerance promises more back',
+     Number(tight.min_receive) > Number(loose.min_receive),
+     tight.min_receive + ' vs ' + loose.min_receive);
+  ok('the tightest is within a thousandth of the quote',
+     Number(tight.min_receive) === Math.floor(Number(RETURN) * 0.999),
+     tight.min_receive);
+  ok('the loosest gives away five percent',
+     Number(loose.min_receive) === Math.floor(Number(RETURN) * 0.95),
+     loose.min_receive);
+
+  // terraswap is told the same thing in its own words
+  function spreadAt(slip){
+    const src = [
+      'const SLIP = ' + slip + ';',
+      liftLine(swap, 'const keyOf ='),
+      lift(swap, 'function envelope(')
+    ].join('\n') + '\nreturn { envelope };';
+    const q = { pair: 'terra1pool', dialect: 'ts', offerRaw: OFFER, returnRaw: RETURN };
+    const api = new Function('gdInfo', 'btoa', 'FROM', 'QUOTE', src)(mod.gdInfo, b64, TOK, q);
+    const e = api.envelope();
+    return JSON.parse(Buffer.from(e.msg.send.msg, 'base64').toString()).swap.max_spread;
+  }
+  ok('max_spread carries the chosen tolerance, not a constant',
+     spreadAt(0.005) === '0.005' && spreadAt(0.05) === '0.05',
+     spreadAt(0.005) + ' / ' + spreadAt(0.05));
+}
+
+group('the offered tolerances');
+{
+  const choices = eval(swap.match(/const SLIP_CHOICES\s*=\s*(\[[^\]]*\])/)[1]);
+  ok('there are a few to pick from', choices.length >= 3);
+  ok('all of them are fractions, not percentages',
+     choices.every(c => c > 0 && c < 1), choices.join(','));
+  ok('they are offered smallest first', choices.slice().sort((a, b) => a - b).join() === choices.join());
+  const label = new Function('return ' + liftLine(swap, 'const slipText =').replace(/^const slipText =\s*/, '').replace(/;$/, ''))();
+  ok('a tenth of a percent reads as one', label(0.001) === '0.1%', label(0.001));
+  ok('one percent does not read as 1.00%', label(0.01) === '1%', label(0.01));
+}
+
+group('reading a saved tolerance back');
+{
+  const api = new Function('SLIP_CHOICES', 'SLIP_KEY', [
+    lift(swap, 'function savedSlip('), 'return { savedSlip };'
+  ].join('\n'))(eval(swap.match(/const SLIP_CHOICES\s*=\s*(\[[^\]]*\])/)[1]), 'fw:slip');
+
+  ok('a stored choice is honoured', api.savedSlip(() => '0.005') === 0.005);
+  ok('a value nobody was offered is ignored', api.savedSlip(() => '0.5') === 0.01);
+  ok('so is nonsense', api.savedSlip(() => 'lots') === 0.01);
+  ok('an empty store falls back', api.savedSlip(() => null) === 0.01);
+  ok('a store that throws does not take the screen down',
+     api.savedSlip(() => { throw new Error('blocked'); }) === 0.01);
 }
 
 group('two steps, one transaction');
