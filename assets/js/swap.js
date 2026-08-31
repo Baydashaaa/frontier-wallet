@@ -4,12 +4,12 @@
 // пул сам умеет ответить, сколько отдаст за конкретную сумму, с учётом
 // проскальзывания и комиссии. Считать это самому - значит показать одно
 // число, а получить другое.
-import { THIN_LUNC, amt, fmt, iconHTML, paintIcons, usd } from './chain.js?v=c06581d5';
-import { $, go, tap } from './shell.js?v=c06581d5';
-import { DEC, assetOf, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, midsBetween, poolsBetween, reserves, simulateSwap } from './market.js?v=c06581d5';
-import { fiatOf, heldTokens, refreshBalances, remember } from './tokens.js?v=c06581d5';
-import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=c06581d5';
-import { S } from './state.js?v=c06581d5';
+import { THIN_LUNC, amt, fmt, iconHTML, paintIcons, usd } from './chain.js?v=2d84c61b';
+import { $, go, tap } from './shell.js?v=2d84c61b';
+import { DEC, assetOf, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, midsBetween, poolsBetween, reserves, simulateSwap } from './market.js?v=2d84c61b';
+import { fiatOf, heldTokens, refreshBalances, remember } from './tokens.js?v=2d84c61b';
+import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=2d84c61b';
+import { S } from './state.js?v=2d84c61b';
 
 const LUNC = { sym: 'LUNC', denom: 'uluna', dec: 6, native: true };
 let FROM = LUNC, TO = null, TIMER = null, SEQ = 0;
@@ -144,20 +144,55 @@ const swappable = t => !!t && !LEGACY(t.denom) && allPeersOf(t).length > 0;
    their own exchange routes that trade through cUSTC rather than refusing it.
    Direct destinations come first; a hop costs a second pool's fee and leaves a
    little of the middle token behind, so it is the fallback, not the default. */
+/* The order the destinations are offered in.
+
+   Depth alone will not do it. A pair the market feed publishes carries a
+   liquidity figure; a pair found by walking a factory carries none, because a
+   factory listing says a pool exists and nothing about its size. Sorting on
+   that number alone would bury every pool the feed does not cover - which is
+   the whole of two exchanges - for a reason that has nothing to do with how
+   tradeable they are.
+
+   Four keys, in order. One hop before two, because a direct trade is one
+   message, one fee and no residue. Then depth, where anyone knows it. Then
+   what the wallet already holds, since that is what someone scrolling this list
+   is usually after. Then the ticker, so the same list comes out the same way
+   twice - an order that shuffles is worse than an order that is merely
+   imperfect. */
+function rankDestinations(out, held){
+  return out.sort(function (a, b) {
+    if (a.hops !== b.hops) return a.hops - b.hops;
+    const la = typeof a.liq === 'number' ? a.liq : null;
+    const lb = typeof b.liq === 'number' ? b.liq : null;
+    if (la !== null && lb !== null && la !== lb) return lb - la;
+    if (la !== null && lb === null) return -1;
+    if (la === null && lb !== null) return 1;
+    const ha = held[a.key] ? 1 : 0, hb = held[b.key] ? 1 : 0;
+    if (ha !== hb) return hb - ha;
+    return String(a.sym || a.key).localeCompare(String(b.sym || b.key));
+  });
+}
+
 function destinations(t){
   const self = keyOf(t);
-  const seen = {}, out = [];
+  const seen = {}, out = [], held = {};
+  for (const r of heldTokens()) if ((r.v || 0) > 0) held[keyOf(r)] = 1;
   const near = peersOf(t);
   for (const p of near) { seen[p.key] = 1; out.push(Object.assign({ hops: 1 }, p)); }
   for (const m of near.slice(0, 10)) {
     for (const q of directPeers(m.key).concat(graphPeers(m.key))) {
       if (q.key === self || seen[q.key] || LEGACY(q.key.slice(7))) continue;
-      if (!knownAsset(q.key) && !heldTokens().some(r => keyOf(r) === q.key)) continue;
+      if (!knownAsset(q.key) && !held[q.key]) continue;
       seen[q.key] = 1;
       out.push(Object.assign({}, q, { hops: 2, via: m.key }));
     }
   }
-  return out;
+  // the name is what the list is read by, so the sort needs it
+  for (const p of out) if (!p.sym) {
+    const a = knownAsset(p.key);
+    if (a) p.sym = a.sym;
+  }
+  return rankDestinations(out, held);
 }
 
 /* Six is the answer for almost every token here, which is exactly what makes
@@ -422,6 +457,20 @@ function setPct(p){
   $('#sw-amt').value = v > 0 ? v.toFixed(decOf(FROM)) : '';
   $('#sw-range').value = String(p);
   schedule();
+}
+
+/* The handle follows the number.
+
+   It only ever went the other way, so typing an amount left the slider - and
+   with it the coloured zone that says where this pool starts to cost more than
+   a percent - describing some earlier trade. */
+function syncRange(){
+  const el = $('#sw-range');
+  if (!el) return;
+  const bal = balOf(FROM);
+  const v = parseFloat(String($('#sw-amt').value).replace(',', '.'));
+  if (!bal || !isFinite(v) || v <= 0) { el.value = '0'; return; }
+  el.value = String(Math.max(0, Math.min(100, Math.round((v / bal) * 100))));
 }
 
 function pick(sym){
@@ -797,7 +846,7 @@ function paintUsd(){
 
 const schedule = () => { clearTimeout(TIMER); TIMER = setTimeout(quote, 400); };
 
-$('#sw-amt').addEventListener('input', function () { paintUsd(); schedule(); });
+$('#sw-amt').addEventListener('input', function () { syncRange(); paintUsd(); schedule(); });
 $('#sw-from').addEventListener('click', () => { tap(); openSheet('from'); });
 $('#sw-to').addEventListener('click', () => { tap(); openSheet('to'); });
 $('#sw-close').addEventListener('click', closeSheet);

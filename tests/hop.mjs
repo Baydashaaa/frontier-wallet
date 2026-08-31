@@ -84,6 +84,36 @@ group('decimals reach the amount that is offered');
      api.decOf({ contract: 'terra1neverseen' }) === 6);
 }
 
+group('the order destinations are offered in');
+{
+  const api = new Function([lift(swap, 'function rankDestinations('),
+                            'return { rankDestinations };'].join('\n'))();
+  const held = { 'cw20:mine': 1 };
+  const rows = [
+    { key: 'cw20:far',   sym: 'FAR',   hops: 2, liq: 900000 },
+    { key: 'cw20:thin',  sym: 'THIN',  hops: 1, liq: 40 },
+    { key: 'cw20:deep',  sym: 'DEEP',  hops: 1, liq: 120000 },
+    { key: 'cw20:zzz',   sym: 'ZZZ',   hops: 1, liq: null },
+    { key: 'cw20:aaa',   sym: 'AAA',   hops: 1, liq: null },
+    { key: 'cw20:mine',  sym: 'MINE',  hops: 1, liq: null }
+  ];
+  const order = api.rankDestinations(rows.slice(), held).map(r => r.sym);
+
+  ok('one hop comes before two, however deep the two is',
+     order.indexOf('FAR') === order.length - 1, order.join(','));
+  ok('a known depth outranks a smaller known depth',
+     order.indexOf('DEEP') < order.indexOf('THIN'), order.join(','));
+  ok('a measured pool outranks an unmeasured one',
+     order.indexOf('THIN') < order.indexOf('AAA'), order.join(','));
+  ok('among the unmeasured, what the wallet holds comes first',
+     order.indexOf('MINE') < order.indexOf('AAA'), order.join(','));
+  ok('and the rest go alphabetically, so the list is stable',
+     order.indexOf('AAA') < order.indexOf('ZZZ'), order.join(','));
+
+  const twice = api.rankDestinations(rows.slice(), held).map(r => r.sym).join(',');
+  ok('the same input gives the same order twice', twice === order.join(','));
+}
+
 group('naming the gap between two dollar figures');
 {
   // valueGap decides whether the difference between what goes in and what comes
