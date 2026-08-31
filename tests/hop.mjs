@@ -85,6 +85,32 @@ group('decimals reach the amount that is offered');
      api.decOf({ contract: 'terra1neverseen' }) === 6);
 }
 
+group('the comfortable size is measured, not assumed');
+{
+  // The old estimate read the reserve and assumed a constant product curve. On
+  // a pool with an order book beside it that assumption is wrong, and it was
+  // wrong in the confident direction: "deep enough for anything you hold",
+  // followed by the contract refusing the trade.
+  const api = new Function('firstLeg', 'balOf', 'COMFORT', [
+    lift(swap, 'function comfortOf('), 'return { comfortOf };'
+  ].join('\n'));
+
+  const run = m => api(() => 'P', () => 1000, m ? { P: m } : {}).comfortOf();
+
+  ok('nothing measured yet means no claim at all', run(null) === 0);
+  ok('a pool that costs under a percent at the full balance takes all of it',
+     run({ at: 1000, pct: 0.4 }) === 1000, String(run({ at: 1000, pct: 0.4 })));
+  ok('exactly one percent still counts as all of it',
+     run({ at: 1000, pct: 1 }) === 1000);
+  // 1000 costs 5%, so a percent is reached around a fifth of that
+  ok('above a percent, the crossing point comes from the measurement',
+     run({ at: 1000, pct: 5 }) === 200, String(run({ at: 1000, pct: 5 })));
+  ok('a far worse pool gives a far smaller size',
+     run({ at: 1000, pct: 50 }) === 20, String(run({ at: 1000, pct: 50 })));
+  ok('a measurement in flight makes no claim',
+     run({ at: 0, pct: 0 }) === 0);
+}
+
 group('the order destinations are offered in');
 {
   const api = new Function([lift(swap, 'function rankDestinations('),

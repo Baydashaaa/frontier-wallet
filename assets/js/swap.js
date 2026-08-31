@@ -4,12 +4,12 @@
 // пул сам умеет ответить, сколько отдаст за конкретную сумму, с учётом
 // проскальзывания и комиссии. Считать это самому - значит показать одно
 // число, а получить другое.
-import { DEBUG, THIN_LUNC, amt, dbg, fmt, iconHTML, paintIcons, usd } from './chain.js?v=3710cbd7';
-import { $, go, tap } from './shell.js?v=3710cbd7';
-import { DEC, assetOf, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, midsBetween, poolsBetween, reserves, simulateSwap } from './market.js?v=3710cbd7';
-import { fiatOf, heldTokens, refreshBalances, remember } from './tokens.js?v=3710cbd7';
-import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=3710cbd7';
-import { S } from './state.js?v=3710cbd7';
+import { DEBUG, THIN_LUNC, amt, dbg, fmt, iconHTML, paintIcons, usd } from './chain.js?v=7c0d8159';
+import { $, go, tap } from './shell.js?v=7c0d8159';
+import { DEC, assetOf, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, midsBetween, poolsBetween, reserves, simulateSwap } from './market.js?v=7c0d8159';
+import { fiatOf, heldTokens, refreshBalances, remember } from './tokens.js?v=7c0d8159';
+import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=7c0d8159';
+import { S } from './state.js?v=7c0d8159';
 
 const LUNC = { sym: 'LUNC', denom: 'uluna', dec: 6, native: true };
 let FROM = LUNC, TO = null, TIMER = null, SEQ = 0;
@@ -246,11 +246,48 @@ function firstLeg(){
   return mids.length ? mids[0].first[0].pair : null;
 }
 
+/* The largest trade this pool takes for under a percent, worked out from what
+   it charged for one real trade rather than from the shape it is assumed to
+   have.
+
+   Costing a curve is easy and wrong here: a pool with an order book beside it
+   does not move the way a curve does, and those are the pairs where the old
+   estimate said "deep enough" right up until the contract refused the trade.
+
+   One measurement, taken at the whole balance because that is the largest
+   trade anyone on this screen can make. Under a percent there, and nothing
+   they could do costs more than a percent. Over it, the crossing point is
+   scaled from the measurement - an approximation, but of a number the pool
+   actually gave. */
+const COMFORT = {};
 function comfortOf(){
   const pair = firstLeg();
   if (!pair) return 0;
-  const d = DEPTH[pair];
-  return d && d > 0 ? d * 0.01 : 0;
+  const m = COMFORT[pair];
+  if (!m || !(m.at > 0)) return 0;
+  if (!(m.pct > 0)) return m.at;               // nothing measurable at any size
+  if (m.pct <= 1) return m.at;                 // the whole balance costs under 1%
+  const size = m.at / m.pct;                   // where a percent is reached
+  return size > 0 ? size : 0;
+}
+
+async function learnComfort(){
+  const pair = firstLeg();
+  if (!pair || COMFORT[pair] !== undefined) return;
+  const bal = balOf(FROM);
+  if (!(bal > 0)) return;
+  COMFORT[pair] = { at: 0, pct: 0 };           // asked, so the next paint waits
+  const raw = toRaw(String(bal), decOf(FROM));
+  const pools = poolsBetween(keyOf(FROM), keyOf(TO));
+  const first = pools.length ? pools : (midsBetween(keyOf(FROM), keyOf(TO))[0] || {}).first;
+  if (!first || !first.length) { delete COMFORT[pair]; return; }
+  const q = await simulateSwap(first[0].pair, keyOf(FROM), raw, first[0].dex).catch(() => null);
+  if (!q) { delete COMFORT[pair]; return; }
+  const out = Number(q.return_amount), spread = Number(q.spread_amount);
+  const fee = Number(q.commission_amount);
+  const whole = out + spread + fee;
+  COMFORT[pair] = { at: bal, pct: whole > 0 ? (spread / whole) * 100 : 0 };
+  paintZones();
 }
 
 // Which pool: the deepest one by the map when nothing has been quoted yet, and
@@ -258,6 +295,9 @@ function comfortOf(){
 // for an amount is not always the biggest - and reading the wrong one is why
 // the depth line sat on "reading" forever.
 async function learnDepth(pair){
+  // the reserve is a fact worth showing; it is simply not what the promise
+  // above should have been made of
+  learnComfort();
   if (!pair) pair = firstLeg();
   if (!pair) return;
   if (DEPTH[pair] !== undefined) return;
@@ -297,7 +337,7 @@ function paintZones(){
     'linear-gradient(90deg,#00FFB0 0 ' + s + '%,#E8C840 ' + s + '% ' + m + '%,' +
     '#FF6B8A ' + m + '% 100%)');
   hint.innerHTML = c >= bal
-    ? 'This pool is deep enough for anything you hold.'
+    ? 'Asked directly: this pool takes anything you hold for under 1%.'
     : 'Around <b>' + fmt(c) + ' ' + FROM.sym + '</b> is where this pool starts ' +
       'costing you more than 1%.';
 }

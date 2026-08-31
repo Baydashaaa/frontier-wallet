@@ -1,4 +1,4 @@
-import { EXTRA_PAIRS, FACTORIES, LCD, THIN_LUNC, amt, dbg, getJSON, smart } from './chain.js?v=3710cbd7';
+import { EXTRA_PAIRS, FACTORIES, LCD, THIN_LUNC, amt, dbg, getJSON, smart } from './chain.js?v=7c0d8159';
 
 /* ---------------- discovery and pricing ----------------
    The chain has no "which CW20 does this address hold" endpoint. Balances live
