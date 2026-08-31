@@ -48,7 +48,7 @@
   #fw-splash .fw-seam{animation:none}
 }
 </style>
-<link rel="stylesheet" href="assets/css/app.css?v=8e146a21">
+<link rel="stylesheet" href="assets/css/app.css?v=e1051c10">
 </head>
 <body>
 <div id="rt"></div>
@@ -469,6 +469,19 @@
   <div class="head" style="margin:6px 4px 14px"><h2>Activity</h2></div>
   <div id="ac-list"><div class="empty">Loading</div></div>
   <p class="tiny" id="ac-note"></p>
+
+  <div class="sw-sheet" id="tx-sheet" hidden>
+    <div class="sw-sheet-in">
+      <div class="sw-sheet-top"><span>Transaction</span>
+        <button class="sw-x" id="tx-x" type="button">Close</button></div>
+      <div class="tx-body" id="tx-body"></div>
+      <div class="tx-acts">
+        <button class="btn quiet" id="tx-copy" type="button">Copy hash</button>
+        <button class="btn quiet" id="tx-open" type="button">Open in explorer</button>
+      </div>
+      <button class="btn quiet" id="tx-close" type="button">Done</button>
+    </div>
+  </div>
 </section>
 
 <section class="step wpad" id="st-settings">
@@ -517,10 +530,10 @@
 </section>
 
 <script src="vendor/telegram-web-app.js"></script>
-<script type="module" src="assets/js/app.js?v=8e146a21"></script>
-<script src="assets/js/ads.js?v=8e146a21"></script>
-<script type="module" src="assets/js/swap.js?v=8e146a21"></script>
-<script type="module" src="assets/js/activity.js?v=8e146a21"></script>
-<script type="module" src="assets/js/nft.js?v=8e146a21"></script>
+<script type="module" src="assets/js/app.js?v=e1051c10"></script>
+<script src="assets/js/ads.js?v=e1051c10"></script>
+<script type="module" src="assets/js/swap.js?v=e1051c10"></script>
+<script type="module" src="assets/js/activity.js?v=e1051c10"></script>
+<script type="module" src="assets/js/nft.js?v=e1051c10"></script>
 </body>
 </html>

@@ -242,6 +242,9 @@ group('routing through a middle asset');
      String(mod.midsBetween(A.JURIS, A.CL8Y).length));
 }
 
+// what a transaction is called, lifted from activity.js
+await import('./activity.mjs');
+
 // the two step quote, lifted from swap.js like the envelopes below
 await import('./hop.mjs');
 
