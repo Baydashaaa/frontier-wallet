@@ -26,6 +26,10 @@ export const THIN_LUNC = 500000;
 export const EXTRA_PAIRS = [];
 export const FACTORIES = globalThis.__FACTORIES;
 export const amt = (raw, dec) => Number(raw || 0) / Math.pow(10, dec);
+// diagnostics are off in the build and off here; a test that needs them can
+// swap this for console.info
+export const DEBUG = false;
+export const dbg = () => {};
 export const smart = (addr, msg, tries) => C().smart(addr, msg, tries);
 export const getJSON = (url, ms, tries) => C().getJSON(url, ms, tries);
 `;

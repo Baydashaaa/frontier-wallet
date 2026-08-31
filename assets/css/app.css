@@ -409,6 +409,10 @@ textarea{resize:none;min-height:110px;line-height:1.8}
 .sw-line b{font-family:'Rajdhani',sans-serif;font-weight:600;color:#E8F0FF}
 .sw-line.warn b{color:var(--gold)}
 .sw-line.bad b{color:var(--red)}
+/* the one figure on the review screen that is a promise */
+.sw-line.big{align-items:baseline;margin:2px 0 4px}
+.sw-line.big span{font-size:13px;color:#E8F0FF}
+.sw-line.big b{font-size:20px;letter-spacing:.01em}
 /* a sentence under a number, for when the number alone would mislead */
 .sw-note{margin:-2px 0 4px;font-size:11px;line-height:1.5;color:var(--muted)}
 

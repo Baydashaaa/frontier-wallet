@@ -4,12 +4,12 @@
 // пул сам умеет ответить, сколько отдаст за конкретную сумму, с учётом
 // проскальзывания и комиссии. Считать это самому - значит показать одно
 // число, а получить другое.
-import { THIN_LUNC, amt, fmt, iconHTML, paintIcons, usd } from './chain.js?v=2d84c61b';
-import { $, go, tap } from './shell.js?v=2d84c61b';
-import { DEC, assetOf, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, midsBetween, poolsBetween, reserves, simulateSwap } from './market.js?v=2d84c61b';
-import { fiatOf, heldTokens, refreshBalances, remember } from './tokens.js?v=2d84c61b';
-import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=2d84c61b';
-import { S } from './state.js?v=2d84c61b';
+import { DEBUG, THIN_LUNC, amt, dbg, fmt, iconHTML, paintIcons, usd } from './chain.js?v=7146bd19';
+import { $, go, tap } from './shell.js?v=7146bd19';
+import { DEC, assetOf, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, midsBetween, poolsBetween, reserves, simulateSwap } from './market.js?v=7146bd19';
+import { fiatOf, heldTokens, refreshBalances, remember } from './tokens.js?v=7146bd19';
+import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=7146bd19';
+import { S } from './state.js?v=7146bd19';
 
 const LUNC = { sym: 'LUNC', denom: 'uluna', dec: 6, native: true };
 let FROM = LUNC, TO = null, TIMER = null, SEQ = 0;
@@ -504,7 +504,8 @@ function result(state, title, note, hash){
 
 function detail(lines){
   $('#sw-detail').innerHTML = lines.map(function (l) {
-    return '<div class="sw-line' + (l.tone ? ' ' + l.tone : '') + '">' +
+    return '<div class="sw-line' + (l.tone ? ' ' + l.tone : '') +
+      (l.big ? ' big' : '') + '">' +
       '<span>' + l.k + '</span><b>' + l.v + '</b></div>' +
       (l.note ? '<p class="sw-note">' + l.note + '</p>' : '');
   }).join('');
@@ -538,16 +539,17 @@ function valueGap(v, got, costPct){
    Pulled out of quote() because a two step swap asks this twice, once per leg,
    and the second leg is not the pair on screen. */
 async function bestPool(pools, offerKey, raw, refused, label){
-  const seen = [];
+  // built only when something will read them
+  const seen = DEBUG ? [] : null;
   const got = (await Promise.all(pools.slice(0, 3).map(function (p) {
     return simulateSwap(p.pair, offerKey, raw, p.dex)
       .then(function (x) {
-        seen.push(p.pair.slice(0, 12) + '/' + x.dialect + '=' + x.return_amount);
+        if (seen) seen.push(p.pair.slice(0, 12) + '/' + x.dialect + '=' + x.return_amount);
         return { pair: p.pair, dialect: x.dialect, d: x };
       })
       .catch(function (e) {
         const why = String(e && e.message ? e.message : e);
-        seen.push(p.pair.slice(0, 12) + '/' + (p.dex || '?') + '!' + why.slice(0, 40));
+        if (seen) seen.push(p.pair.slice(0, 12) + '/' + (p.dex || '?') + '!' + why.slice(0, 40));
         refused.push(why);
         return null;
       });
@@ -556,8 +558,8 @@ async function bestPool(pools, offerKey, raw, refused, label){
   // came back, because the answer to "why is there no quote" is in there and
   // nowhere else.
   if (!got.length) {
-    console.info('[leg]', label || '?', 'offer', offerKey.slice(0, 18), raw,
-                 '->', seen.join(' | ') || 'no pools');
+    dbg('[leg]', label || '?', 'offer', offerKey.slice(0, 18), raw,
+                 '->', (seen && seen.join(' | ')) || 'no pools');
   }
   got.sort(function (a, b) { return Number(b.d.return_amount) - Number(a.d.return_amount); });
   return { best: got[0] || null, tried: pools.length, answered: got.length, all: got };
@@ -630,7 +632,7 @@ async function quoteHop(mids, raw, refused){
     };
   }
   if (!best) {
-    console.info('[hop]', mids.length + ' candidates,', trace.join(' | ') || 'none tried',
+    dbg('[hop]', mids.length + ' candidates,', trace.join(' | ') || 'none tried',
                  '| refusals', refused.length);
   }
   return best;
@@ -796,20 +798,20 @@ async function learnPrice(t){
   const lunc = fiatOf({ sym: 'LUNC', v: 1 });
   if (lunc === null) return;
   const p = await mapPrice(k).catch(() => null);
-  if (!p || !p.inLunc) { console.warn('[swap] no route to price', k); return; }
+  if (!p || !p.inLunc) { dbg('[swap] no route to price', k); return; }
   // The narrowest leg of the route, in LUNC. Below the line where a pool stops
   // being a market, the number it produces is not a price - it is whatever the
   // last person to touch that pool left behind, and printing it next to a real
   // amount would be the most confident thing on the screen.
   if (p.depth !== undefined && p.depth < THIN_LUNC) {
-    console.warn('[swap] route too thin to price', k, 'narrow leg', Math.round(p.depth),
+    dbg('[swap] route too thin to price', k, 'narrow leg', Math.round(p.depth),
                  'LUNC, floor is', THIN_LUNC);
     return;
   }
   // Printed because a wrong price is otherwise untraceable: the number on the
   // screen says nothing about which pool produced it, and finding that out by
   // hand took two rounds.
-  console.info('[swap] price', k, '=', p.inLunc * lunc, 'usd via',
+  dbg('[swap] price', k, '=', p.inLunc * lunc, 'usd via',
                p.hops + ' hop' + (p.hops > 1 ? 's' : ''),
                p.via || '', p.route.map(r => r.pair).join(' -> '),
                'depth', p.depth,
@@ -959,10 +961,16 @@ $('#sw-go').addEventListener('click', async () => {
       const est = await dryRunSwap(addrOf(), plan, S.MNEMONIC);
       PLAN = { steps: plan, est: est };
       const min = QUOTE.got * (1 - SLIP);
+      /* The promise first, in the largest type on the screen.
+         What a pool is expected to return and what it is obliged to return are
+         two different numbers, and only the second is owed to anyone. Leading
+         with the first meant that a pool moving between the check and the
+         signature delivered less than the figure someone had just read in bold
+         - warned about, in the line underneath, which is not the same as told. */
       const review = [
-        { k: 'You receive', v: fmt(QUOTE.got) + ' ' + TO.sym },
-        { k: 'At worst', v: fmt(min) + ' ' + TO.sym + ' \u00b7 ' + slipText(SLIP) + ' tolerance',
-          tone: 'warn' }
+        { k: 'You receive at least', v: fmt(min) + ' ' + TO.sym, big: true },
+        { k: 'Expected, if the pool holds',
+          v: fmt(QUOTE.got) + ' ' + TO.sym + ' \u00b7 ' + slipText(SLIP) + ' tolerance' }
       ];
       if (QUOTE.hops === 2) {
         // both messages commit together or neither does, and the middle token

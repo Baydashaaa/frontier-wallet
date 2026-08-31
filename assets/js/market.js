@@ -1,4 +1,4 @@
-import { EXTRA_PAIRS, FACTORIES, LCD, THIN_LUNC, amt, getJSON, smart } from './chain.js?v=2d84c61b';
+import { EXTRA_PAIRS, FACTORIES, LCD, THIN_LUNC, amt, dbg, getJSON, smart } from './chain.js?v=7146bd19';
 
 /* ---------------- discovery and pricing ----------------
    The chain has no "which CW20 does this address hold" endpoint. Balances live
@@ -385,7 +385,7 @@ async function mapPrice(key){
   }
 
   if (!best || best.depth < THIN_LUNC) {
-    console.info('[route]', key.slice(0, 18), trace.join(' | '),
+    dbg('[route]', key.slice(0, 18), trace.join(' | '),
                  '| peers ow=' + directPeers(key).length,
                  'graph=' + graphPeers(key).length,
                  '| graphReady=' + graphReady());

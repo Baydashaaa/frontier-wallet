@@ -1,4 +1,4 @@
-import { $ } from './shell.js?v=2d84c61b';
+import { $ } from './shell.js?v=7146bd19';
 
 /* ---------------- chain reads ---------------- */
 const LCD = 'https://terra-classic-lcd.publicnode.com';
@@ -238,6 +238,22 @@ async function getJSON(url, ms = 12000, tries = 3){
   }
   throw last;
 }
+/* Kept in the build, silent by default.
+
+   These traces are how a price computed at six decimals instead of eighteen
+   was found, and how an empty hub list was told apart from a hub list with no
+   route in it. Neither would have been found by reading the code - both looked
+   right. So they stay, and they stay off: ?debug=1 to turn them on, and it is
+   remembered until ?debug=0. */
+const DEBUG = (function () {
+  try {
+    if (/[?&]debug=1/.test(location.search)) { localStorage.setItem('fw:debug', '1'); return true; }
+    if (/[?&]debug=0/.test(location.search)) { localStorage.removeItem('fw:debug'); return false; }
+    return localStorage.getItem('fw:debug') === '1';
+  } catch (e) { return false; }
+})();
+function dbg(){ if (DEBUG) console.info.apply(console, arguments); }
+
 const amt = (raw, dec) => Number(raw || 0) / Math.pow(10, dec);
 const fmt = v => v.toLocaleString('en-US', { maximumFractionDigits: v < 1 ? 6 : 2 });
 const usd = v => '$' + v.toLocaleString('en-US', { minimumFractionDigits:2, maximumFractionDigits:2 });
@@ -249,4 +265,4 @@ async function prices(){
   } catch (e) { return {}; }
 }
 
-export { CW20, EXTRA_PAIRS, FACTORIES, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd };
+export { CW20, DEBUG, EXTRA_PAIRS, FACTORIES, LCD, NATIVE, THIN_LUNC, amt, chainLogo, dbg, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd };

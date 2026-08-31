@@ -60,8 +60,9 @@ const body = [
 
 function run(fromKey, toKey){
   const FROM = tok(fromKey), TO = tok(toKey);
-  const api = new Function('simulateSwap', 'tokenFor', 'FROM', 'TO', body)(
-    mod.simulateSwap, k => tok(k), FROM, TO);
+  // DEBUG guards the trace strings inside bestPool, so the lifted code needs it
+  const api = new Function('simulateSwap', 'tokenFor', 'FROM', 'TO', 'DEBUG', 'dbg', body)(
+    mod.simulateSwap, k => tok(k), FROM, TO, false, () => {});
   return { api: api, FROM: FROM, TO: TO };
 }
 

@@ -214,6 +214,21 @@ group('reading a saved tolerance back');
      api.savedSlip(() => { throw new Error('blocked'); }) === 0.01);
 }
 
+group('the review screen leads with the promise');
+{
+  // Two numbers, only one of which anyone is owed. Leading with the expectation
+  // meant a pool that moved between the check and the signature delivered less
+  // than the figure someone had just read in bold.
+  const src = fs.readFileSync(path.join(SRC, 'swap.js'), 'utf8');
+  const block = src.slice(src.indexOf('const review = ['),
+                          src.indexOf(']', src.indexOf('const review = [')));
+  ok('the guaranteed figure comes first',
+     block.indexOf('at least') < block.indexOf('Expected'), block.slice(0, 60));
+  ok('and it is the one set in large type', /at least[^}]*big: true/.test(block));
+  ok('the expectation is not', !/Expected[^}]*big: true/.test(block));
+  ok('the tolerance is named beside it', block.indexOf('slipText(SLIP)') >= 0);
+}
+
 group('two steps, one transaction');
 {
   const MID = { sym: 'cUSTC', contract: 'terra1custc' };
