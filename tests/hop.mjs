@@ -85,6 +85,45 @@ group('decimals reach the amount that is offered');
      api.decOf({ contract: 'terra1neverseen' }) === 6);
 }
 
+group('a fee is quoted in the asset it was taken from');
+{
+  // Garuda answers with the return and the spread in what you receive and the
+  // commission in what you pay. Measured on a real pool: 8.233232 CL8Y offered,
+  // commission 41166162281441236, which at eighteen decimals is 0.041166 - half
+  // a percent of the offer. Read at the receiving side's six decimals it came
+  // out as forty one billion USTC and a hundred percent.
+  const api = new Function([lift(swap, 'const legCost ='), 'return { legCost };'].join('\n'))();
+
+  const garuda = { return_amount: '725380679', spread_amount: '42310821',
+                   commission_amount: '41166162281441236' };
+  const g = api.legCost(garuda, 6, 18, 'gd', 8.233232456288247);
+  near('the return is read at the receiving side', g.out, 725.380679, 0.0001);
+  near('the fee is read at the offering side', g.fee, 0.041166162281441236, 0.0001);
+  ok('and it is marked as belonging to that side', g.feeSide === 'in', g.feeSide);
+  near('so the fee comes out as the half percent it is', g.feePct, 0.5, 0.01);
+
+  // the same numbers read the old way: what the screen was showing
+  const wrong = api.legCost(garuda, 6, 6, 'ts', 8.233232456288247);
+  ok('read the old way it was forty one billion', wrong.fee > 4e10, String(wrong.fee));
+  ok('and a hundred percent', wrong.feePct > 99, String(wrong.feePct));
+
+  // terraswap and cl8y keep the commission on the receiving side
+  const ts = { return_amount: '1000000', spread_amount: '2000', commission_amount: '3000' };
+  const t = api.legCost(ts, 6, 6, 'ts', 1);
+  ok('an ordinary pool still reports on the receiving side', t.feeSide === 'out');
+  near('and its fee is a share of what comes back', t.feePct, 0.299, 0.02);
+  near('the spread is measured against the whole', t.impact, 0.199, 0.02);
+
+  // A fee taken from the offer is not part of what came back, so it has no
+  // place in the total the spread is measured against. With both sides at the
+  // same scale the difference is plain: 0.1 of spread against 1.1 returned,
+  // not against 1.6.
+  const same = { return_amount: '1000000', spread_amount: '100000',
+                 commission_amount: '500000' };
+  const g2 = api.legCost(same, 6, 6, 'gd', 10);
+  near('an offer-side fee stays out of the gross', g2.impact, 9.09, 0.02);
+}
+
 group('the comfortable size is measured, not assumed');
 {
   // The old estimate read the reserve and assumed a constant product curve. On

@@ -4,12 +4,12 @@
 // пул сам умеет ответить, сколько отдаст за конкретную сумму, с учётом
 // проскальзывания и комиссии. Считать это самому - значит показать одно
 // число, а получить другое.
-import { DEBUG, THIN_LUNC, amt, dbg, fmt, iconHTML, paintIcons, usd } from './chain.js?v=61a6a5aa';
-import { $, go, tap } from './shell.js?v=61a6a5aa';
-import { DEC, assetOf, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, midsBetween, poolsBetween, reserves, simulateSwap } from './market.js?v=61a6a5aa';
-import { fiatOf, heldTokens, refreshBalances, remember } from './tokens.js?v=61a6a5aa';
-import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=61a6a5aa';
-import { S } from './state.js?v=61a6a5aa';
+import { DEBUG, THIN_LUNC, amt, dbg, fmt, iconHTML, paintIcons, usd } from './chain.js?v=8e146a21';
+import { $, go, tap } from './shell.js?v=8e146a21';
+import { DEC, assetOf, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, midsBetween, poolsBetween, reserves, simulateSwap } from './market.js?v=8e146a21';
+import { fiatOf, heldTokens, refreshBalances, remember } from './tokens.js?v=8e146a21';
+import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=8e146a21';
+import { S } from './state.js?v=8e146a21';
 
 const LUNC = { sym: 'LUNC', denom: 'uluna', dec: 6, native: true };
 let FROM = LUNC, TO = null, TIMER = null, SEQ = 0;
@@ -473,6 +473,10 @@ function openSheet(side){
   const box = findBox();
   box.value = '';
   drawSheet();
+  // one list serves both sides, so without this the receive side opens
+  // wherever the pay side was left
+  const list = $('#sw-list');
+  if (list) list.scrollTop = 0;
   nameTheRest(side);
   const sheet = $('#sw-sheet');
   sheet.dataset.side = side;
@@ -610,14 +614,34 @@ async function bestPool(pools, offerKey, raw, refused, label){
   return { best: got[0] || null, tried: pools.length, answered: got.length, all: got };
 }
 
-const legCost = (d, dec) => {
-  const out = Number(d.return_amount) / Math.pow(10, dec);
-  const spread = Number(d.spread_amount) / Math.pow(10, dec);
-  const fee = Number(d.commission_amount) / Math.pow(10, dec);
-  const whole = out + spread + fee;
-  return { out: out, spread: spread, fee: fee,
-           impact: whole > 0 ? (spread / whole) * 100 : 0,
-           feePct: out + fee > 0 ? (fee / (out + fee)) * 100 : 0 };
+/* Three numbers, and they are not all in the same asset.
+
+   Garuda answers with the return and the spread measured in what you receive,
+   and the commission measured in what you pay. Dividing all three by the
+   receiving side's decimals turned a fee of 0.041166 CL8Y into 41 billion
+   USTC and a hundred percent - on every Garuda pair, for as long as this has
+   existed.
+
+   TerraSwap and CL8Y both keep the commission on the receiving side, so the
+   exception is Garuda's and is named as such rather than smoothed over by
+   guessing which unit a number looks like it is in. */
+const legCost = (d, decOut, decIn, dialect, paid) => {
+  const onOffer = dialect === 'gd';
+  const out = Number(d.return_amount) / Math.pow(10, decOut);
+  const spread = Number(d.spread_amount) / Math.pow(10, decOut);
+  const fee = Number(d.commission_amount) /
+              Math.pow(10, onOffer ? (decIn === undefined ? decOut : decIn) : decOut);
+  // the fee only belongs in the gross when it was taken from the same side
+  const whole = out + spread + (onOffer ? 0 : fee);
+  return {
+    out: out, spread: spread, fee: fee,
+    // which asset the fee is quoted in, so the row can name the right one
+    feeSide: onOffer ? 'in' : 'out',
+    impact: whole > 0 ? (spread / whole) * 100 : 0,
+    feePct: onOffer
+      ? (paid > 0 ? (fee / paid) * 100 : 0)
+      : (out + fee > 0 ? (fee / (out + fee)) * 100 : 0)
+  };
 };
 
 /* Two pools, one transaction.
@@ -665,8 +689,10 @@ async function quoteHop(mids, raw, refused){
     best = {
       mid: mid, dMid: dMid, asked: asked,
       residue: (Number(one.best.d.return_amount) - Number(min1)) / Math.pow(10, dMid),
-      one: legCost(one.best.d, dMid),
-      two: legCost(two.best.d, decOf(TO)),
+      one: legCost(one.best.d, dMid, decOf(FROM), one.best.dialect,
+                   Number(raw) / Math.pow(10, decOf(FROM))),
+      two: legCost(two.best.d, decOf(TO), dMid, two.best.dialect,
+                   Number(min1) / Math.pow(10, dMid)),
       returnRaw: two.best.d.return_amount,
       legs: [
         { pair: one.best.pair, dialect: one.best.dialect,
@@ -722,7 +748,7 @@ async function quote(){
       if (my !== SEQ) return;
       if (!direct.best) throw new Error(refused[0] || 'no pool would quote this amount');
       pair = direct.best.pair;
-      const c = legCost(direct.best.d, dTo);
+      const c = legCost(direct.best.d, dTo, dFrom, direct.best.dialect, v);
       pct = c.impact;
       learnDepth(pair);
       // What the second best would have given - the whole point of asking more
@@ -747,8 +773,9 @@ async function quote(){
         // a percentage is an argument; the tokens it costs is a fact
         { k: 'Slippage costs you', v: fmt(c.spread) + ' ' + TO.sym,
           tone: pct >= 5 ? 'bad' : pct >= 1 ? 'warn' : '' },
-        { k: 'Pool fee', v: fmt(c.fee) + ' ' + TO.sym +
-          (c.feePct > 0 ? ' \u00b7 ' + c.feePct.toFixed(2) + '%' : ''),
+        { k: 'Pool fee',
+          v: fmt(c.fee) + ' ' + (c.feeSide === 'in' ? FROM.sym : TO.sym) +
+             (c.feePct > 0 ? ' \u00b7 ' + c.feePct.toFixed(2) + '%' : ''),
           tone: c.feePct > 1 ? 'warn' : '' },
         { k: 'Pool depth', v: DEPTH[pair] ? fmt(DEPTH[pair]) + ' ' + FROM.sym : 'reading',
           tone: DEPTH[pair] && DEPTH[pair] < v * 20 ? 'warn' : '' },
@@ -931,7 +958,9 @@ $('#sw-flip').addEventListener('click', () => {
 });
 
 (function () {
-  const top = document.querySelector('.sw-sheet-top');
+  // the token picker's header, not whichever sheet happens to come first in
+  // the document - since patch98 there is more than one
+  const top = document.querySelector('#sw-sheet .sw-sheet-top');
   if (top && !document.getElementById('sw-count')) {
     const n = document.createElement('span');
     n.id = 'sw-count';
