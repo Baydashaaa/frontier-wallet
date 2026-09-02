@@ -1,10 +1,11 @@
-import { amt, fmt } from './chain.js?v=da345e6a';
-import { finish } from './crypto.js?v=da345e6a';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=da345e6a';
-import { $, bip39, buzz, dropKeyboard, go, libs, report, tap, tg } from './shell.js?v=da345e6a';
-import { S } from './state.js?v=da345e6a';
-import { Store, decryptSeed, saveWallet, short, showStore } from './storage.js?v=da345e6a';
-import { luncRaw, openWallet } from './tokens.js?v=da345e6a';
+import { amt, fmt } from './chain.js?v=556f9c7e';
+import { finish } from './crypto.js?v=556f9c7e';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=556f9c7e';
+import { $, bip39, buzz, dropKeyboard, go, libs, report, tap, tg } from './shell.js?v=556f9c7e';
+import { S } from './state.js?v=556f9c7e';
+import { Store, decryptSeed, saveWallet, short, showStore } from './storage.js?v=556f9c7e';
+import { paintSendTok } from './tx.js?v=556f9c7e';
+import { luncRaw, openWallet } from './tokens.js?v=556f9c7e';
 
 /* ---------------- unlock ---------------- */
 let tries = 0;
@@ -113,6 +114,8 @@ $('#home-addr').addEventListener('click', function () {
   row.addEventListener('click', function () { tap(); try { tg.close(); } catch (e) {} });
 })();
 $('#act-send').addEventListener('click', () => {
+  // the asset picker starts from whatever the wallet actually holds
+  paintSendTok();
   // hand the send screen the balance it is allowed to spend
   const el = $('#send-avail');
   if (el) {

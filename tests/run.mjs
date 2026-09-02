@@ -242,6 +242,9 @@ group('routing through a middle asset');
      String(mod.midsBetween(A.JURIS, A.CL8Y).length));
 }
 
+// sending something other than LUNC
+await import('./send.mjs');
+
 // what a transaction is called, lifted from activity.js
 await import('./activity.mjs');
 

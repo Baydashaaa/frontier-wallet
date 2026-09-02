@@ -48,7 +48,7 @@
   #fw-splash .fw-seam{animation:none}
 }
 </style>
-<link rel="stylesheet" href="assets/css/app.css?v=da345e6a">
+<link rel="stylesheet" href="assets/css/app.css?v=556f9c7e">
 </head>
 <body>
 <div id="rt"></div>
@@ -425,8 +425,17 @@
   <div class="bar">
     <div class="back" data-go="home"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></div>
   </div>
-  <h1>Send LUNC</h1>
-  <p class="lede">Native LUNC only for now. Tokens follow once this is proven.</p>
+  <h1>Send <span id="send-title">LUNC</span></h1>
+  <p class="lede" id="send-lede">Sent as a coin on Terra Classic. The fee comes out of the same balance.</p>
+
+  <div class="field">
+    <label>Asset</label>
+    <button class="sd-pick" id="sd-token" type="button">
+      <span class="sd-ico" id="sd-ico"></span>
+      <b id="sd-sym">LUNC</b>
+      <svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
+    </button>
+  </div>
 
   <div class="field">
     <label>Recipient</label>
@@ -455,6 +464,18 @@
   </div>
 
   <div id="send-out"></div>
+
+  <div class="sw-sheet" id="sd-sheet" hidden>
+    <div class="sw-sheet-in">
+      <div class="sw-sheet-top"><span>Choose a token</span>
+        <button class="sw-x" id="sd-x" type="button">Close</button></div>
+      <div class="sw-find">
+        <svg viewBox="0 0 24 24" class="sw-find-i"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="sd-q" type="text" autocomplete="off" spellcheck="false" placeholder="Search by ticker">
+      </div>
+      <ul class="sw-list" id="sd-list"></ul>
+    </div>
+  </div>
 
   <div class="grow"></div>
   <button class="btn solid" id="send-review">Check what this would cost</button>
@@ -530,10 +551,10 @@
 </section>
 
 <script src="vendor/telegram-web-app.js"></script>
-<script type="module" src="assets/js/app.js?v=da345e6a"></script>
-<script src="assets/js/ads.js?v=da345e6a"></script>
-<script type="module" src="assets/js/swap.js?v=da345e6a"></script>
-<script type="module" src="assets/js/activity.js?v=da345e6a"></script>
-<script type="module" src="assets/js/nft.js?v=da345e6a"></script>
+<script type="module" src="assets/js/app.js?v=556f9c7e"></script>
+<script src="assets/js/ads.js?v=556f9c7e"></script>
+<script type="module" src="assets/js/swap.js?v=556f9c7e"></script>
+<script type="module" src="assets/js/activity.js?v=556f9c7e"></script>
+<script type="module" src="assets/js/nft.js?v=556f9c7e"></script>
 </body>
 </html>

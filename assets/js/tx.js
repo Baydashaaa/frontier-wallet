@@ -1,7 +1,8 @@
-import { LCD, amt, fmt, getJSON } from './chain.js?v=da345e6a';
-import { $, buzz, go, tap } from './shell.js?v=da345e6a';
-import { S } from './state.js?v=da345e6a';
-import { refreshBalances } from './tokens.js?v=da345e6a';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=556f9c7e';
+import { $, buzz, go, tap } from './shell.js?v=556f9c7e';
+import { S } from './state.js?v=556f9c7e';
+import { iconHTML, paintIcons } from './chain.js?v=556f9c7e';
+import { heldTokens, refreshBalances } from './tokens.js?v=556f9c7e';
 
 /* ---------------- protobuf ----------------
    Written out by hand because cosmjs is several hundred kilobytes and this is
@@ -234,9 +235,104 @@ const luncOf = () => {
   return Number(el && el.dataset.raw || 0);
 };
 
+// the fee comes out of LUNC no matter what is being moved
+function luncBalance(){
+  const r = heldTokens().filter(function (x) { return x.denom === 'uluna'; })[0];
+  return (r && r.v) || 0;
+}
+/* Which asset is being sent.
+
+   The screen said "Native LUNC only for now" while the wallet held forty other
+   things and could already trade them. A CW20 leaves an address the same way it
+   arrives - a transfer message to the token's own contract - and the transport
+   for that has been here since two step swaps needed it. */
+let SEND_TOK = { sym: 'LUNC', denom: 'uluna', dec: 6, v: 0 };
+
+const isCw20 = t => !!(t && t.contract);
+const sendKey = t => !t ? '' : (t.contract ? 'cw20:' + t.contract : 'native:' + t.denom);
+
+function sendable(){
+  const rows = heldTokens().filter(function (r) { return (r.v || 0) > 0; });
+  // LUNC first and always, because it is what the fee is paid in
+  const lunc = rows.filter(function (r) { return r.denom === 'uluna'; })[0];
+  const rest = rows.filter(function (r) { return r.denom !== 'uluna'; });
+  return (lunc ? [lunc] : [SEND_TOK]).concat(rest);
+}
+
+function balanceOf(t){
+  if (!t) return 0;
+  const row = heldTokens().filter(function (r) { return sendKey(r) === sendKey(t); })[0];
+  return (row && row.v) || 0;
+}
+
+function paintSendTok(){
+  const t = SEND_TOK;
+  if (!$('#sd-sym')) return;
+  $('#sd-sym').textContent = t.sym;
+  $('#sd-ico').innerHTML = iconHTML(t);
+  paintIcons($('#sd-token'));
+  $('#send-title').textContent = t.sym;
+  $('#send-lede').textContent = isCw20(t)
+    ? 'A token transfer. The fee is still paid in LUNC.'
+    : 'Sent as a coin on Terra Classic. The fee comes out of the same balance.';
+  const bal = balanceOf(t);
+  const el = $('#send-avail');
+  el.dataset.raw = String(Math.round(bal * Math.pow(10, t.dec || 6)));
+  el.textContent = bal ? '\u00b7 ' + fmt(bal) + ' available' : '';
+  $('#send-out').innerHTML = '';
+  ARMED = null;
+}
+
+function drawSendList(){
+  if (!$('#sd-q')) return;
+  const q = ($('#sd-q').value || '').trim().toUpperCase();
+  const rows = sendable().filter(function (t) {
+    return !q || String(t.sym).toUpperCase().indexOf(q) >= 0;
+  });
+  $('#sd-list').innerHTML = rows.length ? rows.map(function (t) {
+    return '<button class="sw-item" type="button" data-k="' + sendKey(t) + '">' +
+      iconHTML(t) + '<span class="sw-item-s">' + t.sym + '</span>' +
+      '<span class="sw-item-r"><span class="sw-item-v">' + fmt(t.v || 0) + '</span></span>' +
+      '</button>';
+  }).join('') : '<div class="sw-none">Nothing here matches ' + q + '.</div>';
+  paintIcons($('#sd-list'));
+}
+
+/* Wired only if the markup is there.
+   A module that throws while loading takes every listener after it with it, and
+   an index.html one build behind is the ordinary way that happens. */
+const on = (sel, ev, fn) => { const el = $(sel); if (el) el.addEventListener(ev, fn); };
+
+on('#sd-token', 'click', function () {
+  tap();
+  $('#sd-q').value = '';
+  drawSendList();
+  $('#sd-list').scrollTop = 0;
+  $('#sd-sheet').hidden = false;
+});
+on('#sd-x', 'click', function () { $('#sd-sheet').hidden = true; });
+on('#sd-q', 'input', drawSendList);
+on('#sd-list', 'click', function (e) {
+  const b = e.target.closest('.sw-item');
+  if (!b) return;
+  const pick = sendable().filter(function (t) { return sendKey(t) === b.dataset.k; })[0];
+  if (pick) { SEND_TOK = pick; paintSendTok(); }
+  $('#sd-sheet').hidden = true;
+  $('#send-amt').value = '';
+  tap();
+});
+
+
 function line(label, value, strong){
   return '<div class="sline' + (strong ? ' strong' : '') + '"><span>' + label +
          '</span><b>' + value + '</b></div>';
+}
+
+// the message a cw20 transfer is: no funds, no memo inside, the token's own
+// contract asked to move its own bookkeeping
+function cw20Step(t, to, human){
+  return { contract: t.contract, funds: [],
+           msg: { transfer: { recipient: to, amount: toRaw(human, t.dec || 6) } } };
 }
 
 async function review(){
@@ -245,6 +341,7 @@ async function review(){
   const human = $('#send-amt').value.trim();
   const memo = $('#send-memo').value.trim();
   const from = S.SAVED && S.SAVED.addr;
+  const t = SEND_TOK, dec = t.dec || 6;
 
   if (!/^terra1[0-9a-z]{38,58}$/.test(to)) {
     out.innerHTML = '<div class="sbad">That does not look like a Terra Classic address.</div>';
@@ -258,25 +355,66 @@ async function review(){
     out.innerHTML = '<div class="sbad">Unlock the wallet first.</div>';
     return;
   }
+  if (!(Number(toRaw(human || '0', dec)) > 0)) {
+    out.innerHTML = '<div class="sbad">Enter an amount first.</div>';
+    return;
+  }
 
   out.innerHTML = '<div class="tiny">Asking the chain what this would cost...</div>';
   try {
-    const d = await dryRunNative(from, to, 'uluna', human, memo, S.MNEMONIC);
-    const avail = luncOf();
-    const over = d.total > avail;
-    out.innerHTML =
-      line('Amount', fmt(amt(d.amount, 6)) + ' LUNC') +
-      line('Fee \u00b7 ' + d.gas.toLocaleString() + ' gas at ' + GAS_PRICE +
-           ' (burn tax included)', fmt(amt(d.gasFee, 6)) + ' LUNC') +
-      line('Leaves your wallet', fmt(amt(d.total, 6)) + ' LUNC', true) +
-      line('Recipient gets', fmt(amt(d.amount, 6)) + ' LUNC', true) +
-      (over ? '<div class="sbad">More than this address holds - ' +
-              fmt(amt(avail, 6)) + ' LUNC available.</div>' : '') +
-      '<div class="tiny" style="margin-top:12px">Signed at ' + d.bytes +
-      ' bytes, sequence ' + d.seq + '. Nothing has been sent yet.</div>' +
-      (over ? '' : '<button class="btn solid" id="send-go" style="margin-top:14px">Send ' +
-        fmt(amt(d.amount, 6)) + ' LUNC</button>');
-    LAST_GAS = d.gas;
+    const sending = Number(toRaw(human, dec)) / Math.pow(10, dec);
+    const have = balanceOf(t);
+    let gasFee, gas, extra = '';
+
+    if (isCw20(t)) {
+      // the fee is paid in LUNC whatever is being moved, so the two balances
+      // are checked separately - a token transfer can fail for want of LUNC
+      const est = await dryRunSwap(from, [cw20Step(t, to, human)], S.MNEMONIC);
+      gas = est.gas; gasFee = est.gasFee;
+      const lunc = luncBalance();
+      if (gasFee / 1e6 > lunc) {
+        extra = '<div class="sbad">The fee needs ' + fmt(gasFee / 1e6) +
+                ' LUNC and this address has ' + fmt(lunc) + '.</div>';
+      }
+      out.innerHTML =
+        line('Amount', fmt(sending) + ' ' + t.sym) +
+        line('Fee \u00b7 ' + gas.toLocaleString() + ' gas', fmt(gasFee / 1e6) + ' LUNC') +
+        line('Leaves your wallet', fmt(sending) + ' ' + t.sym + ' and ' +
+             fmt(gasFee / 1e6) + ' LUNC', true) +
+        line('Recipient gets', fmt(sending) + ' ' + t.sym, true) +
+        (sending > have ? '<div class="sbad">More than this address holds - ' +
+           fmt(have) + ' ' + t.sym + ' available.</div>' : extra) +
+        '<div class="tiny" style="margin-top:12px">Nothing has been sent yet.</div>' +
+        (sending > have || extra ? '' :
+          '<button class="btn solid" id="send-go" style="margin-top:14px">Send ' +
+          fmt(sending) + ' ' + t.sym + '</button>');
+      LAST_GAS = gas;
+    } else {
+      const d = await dryRunNative(from, to, t.denom, human, memo, S.MNEMONIC);
+      const avail = Math.round(have * 1e6);
+      // only when the coin being sent is the coin the fee is paid in does the
+      // total mean anything
+      const same = t.denom === 'uluna';
+      const total = same ? d.total : Number(d.amount);
+      const over = same ? d.total > avail : Number(d.amount) > avail;
+      out.innerHTML =
+        line('Amount', fmt(amt(d.amount, 6)) + ' ' + t.sym) +
+        line('Fee \u00b7 ' + d.gas.toLocaleString() + ' gas at ' + GAS_PRICE +
+             ' (burn tax included)', fmt(amt(d.gasFee, 6)) + ' LUNC') +
+        line('Leaves your wallet', same
+              ? fmt(amt(total, 6)) + ' LUNC'
+              : fmt(amt(d.amount, 6)) + ' ' + t.sym + ' and ' + fmt(amt(d.gasFee, 6)) + ' LUNC',
+             true) +
+        line('Recipient gets', fmt(amt(d.amount, 6)) + ' ' + t.sym, true) +
+        (over ? '<div class="sbad">More than this address holds - ' +
+                fmt(amt(avail, 6)) + ' ' + t.sym + ' available.</div>' : '') +
+        '<div class="tiny" style="margin-top:12px">Signed at ' + d.bytes +
+        ' bytes, sequence ' + d.seq + '. Nothing has been sent yet.</div>' +
+        (over ? '' : '<button class="btn solid" id="send-go" style="margin-top:14px">Send ' +
+          fmt(amt(d.amount, 6)) + ' ' + t.sym + '</button>');
+      LAST_GAS = d.gas;
+    }
+
     ARMED = null;
     const b = $('#send-go');
     if (b) b.addEventListener('click', () => confirmSend(b, to, human, memo, from));
@@ -310,7 +448,12 @@ async function confirmSend(btn, to, human, memo, from){
   btn.textContent = 'Signing and sending...';
   const out = $('#send-out');
   try {
-    const hash = await sendNative(from, to, 'uluna', human, memo, S.MNEMONIC);
+    const t = SEND_TOK;
+    // a cw20 goes through the contract path, a coin through the bank one; both
+    // come back with a hash and both are waited on the same way
+    const hash = isCw20(t)
+      ? (await sendSwap(from, [cw20Step(t, to, human)], S.MNEMONIC)).hash
+      : await sendNative(from, to, t.denom, human, memo, S.MNEMONIC);
     out.innerHTML = '<div class="sline strong"><span>Accepted by the node</span><b>' +
       hash.slice(0, 10) + '\u2026' + hash.slice(-6) + '</b></div>' +
       '<div class="tiny" style="margin-top:10px">Waiting for the block...</div>';
@@ -337,11 +480,19 @@ async function confirmSend(btn, to, human, memo, from){
 }
 
 function fillMax(){
-  const avail = luncOf();
+  const t = SEND_TOK, dec = t.dec || 6;
+  const bal = balanceOf(t);
+  // Only LUNC pays for its own departure. Everything else leaves the fee to a
+  // balance it does not touch, so all of it can go.
+  if (t.denom !== 'uluna') {
+    $('#send-amt').value = bal > 0 ? bal.toFixed(Math.min(dec, 8)) : '0';
+    tap();
+    return;
+  }
   // what the last review actually needed, or a deliberately high guess. Too
   // little here makes an unsendable transaction; too much costs a fraction.
   const gasFee = Math.ceil((LAST_GAS || 345000) * GAS_PRICE);
-  const raw = Math.floor(avail - gasFee);
+  const raw = Math.floor(bal * 1e6 - gasFee);
   $('#send-amt').value = raw > 0 ? (raw / 1e6).toFixed(6) : '0';
   tap();
 }
@@ -352,6 +503,8 @@ if (btn) {
   const mx = $('#send-max');
   if (mx) mx.addEventListener('click', fillMax);
 }
+
+export { paintSendTok };
 
 export { dryRunNative, sendNative, burnTaxRate, b64, toRaw };
 

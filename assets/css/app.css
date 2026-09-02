@@ -414,6 +414,16 @@ textarea{resize:none;min-height:110px;line-height:1.8}
 .sw-line.warn b{color:var(--gold)}
 .sw-line.bad b{color:var(--red)}
 
+/* the asset being sent, chosen the same way the swap screen chooses one */
+.sd-pick{display:flex;align-items:center;gap:10px;width:100%;padding:11px 14px;
+  border-radius:14px;background:var(--surface2);border:1px solid var(--border);
+  color:var(--text);font:inherit;cursor:pointer;transition:border-color .15s}
+.sd-pick:hover{border-color:var(--accent2)}
+.sd-pick b{flex:1;text-align:left;font-size:15px;font-weight:600;letter-spacing:.03em}
+.sd-pick svg{width:16px;height:16px;flex:none;fill:none;stroke:var(--muted);
+  stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.sd-ico .sym{width:26px;height:26px;font-size:12px}
+
 /* ---- confirm ---- */
 /* What is being paid and what comes back, before anything else on the panel.
    The numbers a person checks are the two amounts; everything under them is
