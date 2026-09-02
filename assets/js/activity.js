@@ -4,9 +4,10 @@
 // решает, что попадёт в выборку. message.sender находит всё, что адрес
 // подписывал - переводы, свапы, стейкинг. Полученное он не видит вовсе, его
 // приходится спрашивать отдельно по получателю, а потом склеивать по хешу.
-import { LCD, amt, fmt, getJSON } from './chain.js?v=e1051c10';
-import { $ } from './shell.js?v=e1051c10';
-import { S } from './state.js?v=e1051c10';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=fc845698';
+import { DEC, knownAsset } from './market.js?v=fc845698';
+import { $ } from './shell.js?v=fc845698';
+import { S } from './state.js?v=fc845698';
 
 // terra.money's classic finder is gone; the community one is what answers
 const FINDER = 'https://finder.terraclassic.community/columbus-5/tx/';
@@ -14,13 +15,35 @@ let LOADED = '';
 
 const short = s => !s ? '' : s.slice(0, 9) + '\u2026' + s.slice(-4);
 
-function ago(ts){
-  const s = Math.max(0, (Date.now() - new Date(ts).getTime()) / 1000);
+/* Two clocks, and they disagreed with each other.
+   Rounding seconds into hours and then into days put "24h ago" directly above
+   "1d ago" for two things that happened minutes apart. Inside a day the time of
+   day is the useful fact; beyond it, the day is, and the day now has a heading
+   of its own - so the row only has to say where in the day it sits. */
+function clock(ts){
+  const t = new Date(ts);
+  const s = Math.max(0, (Date.now() - t.getTime()) / 1000);
   if (s < 90) return 'just now';
   if (s < 3600) return Math.round(s / 60) + 'm ago';
-  if (s < 86400) return Math.round(s / 3600) + 'h ago';
-  const d = Math.round(s / 86400);
-  return d < 30 ? d + 'd ago' : new Date(ts).toISOString().slice(0, 10);
+  return t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+// midnight to midnight, in the reader's own timezone rather than the chain's
+const dayKey = ts => {
+  const d = new Date(ts);
+  return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate();
+};
+
+function dayName(ts){
+  const d = new Date(ts), now = new Date();
+  const same = dayKey(ts) === dayKey(now);
+  const y = new Date(now.getTime() - 86400000);
+  if (same) return 'Today';
+  if (dayKey(ts) === dayKey(y)) return 'Yesterday';
+  const within = (now - d) / 86400000 < 300;
+  return d.toLocaleDateString([], within
+    ? { day: 'numeric', month: 'long' }
+    : { day: 'numeric', month: 'long', year: 'numeric' });
 }
 
 // Only native coins can be read straight off the message. A cw20 amount is a
@@ -45,6 +68,53 @@ function coins(list){
    The execute message names the intent directly: {"send":...} was a send,
    {"swap":...} was a swap. Where the chain of calls matters - a cw20 send whose
    hook is a swap - the hook is opened and it says so. */
+/* What a swap actually moved.
+
+   A row that says "Swapped" and nothing else is half a sentence: the amounts
+   are in the transaction, in the wasm events the pools emit, and reading them
+   is the difference between a list you can scan and a list you have to open.
+
+   For a trade that crossed two pools the first offer and the last return are
+   the two ends of what the owner did; everything between them is the middle
+   token appearing and disappearing inside the same transaction. */
+const keyFor = a => !a ? '' :
+  (String(a).slice(0, 6) === 'terra1' ? 'cw20:' + a : 'native:' + a);
+
+function nameOf(a){
+  const k = keyFor(a);
+  const known = k && knownAsset(k);
+  if (known) return { sym: known.sym, dec: known.dec === undefined ? 6 : known.dec };
+  if (a === 'uluna') return { sym: 'LUNC', dec: 6 };
+  if (a === 'uusd') return { sym: 'USTC', dec: 6 };
+  const d = DEC[k];
+  return { sym: String(a || '').replace(/^u/, '').slice(0, 8).toUpperCase(),
+           dec: d === undefined ? 6 : d };
+}
+
+function swapMoves(t){
+  let gave = null, got = null;
+  for (const lg of (t.logs || [])) {
+    for (const e of (lg.events || [])) {
+      if (e.type !== 'wasm') continue;
+      const a = {};
+      for (const at of (e.attributes || [])) if (!(at.key in a)) a[at.key] = at.value;
+      if (a.action !== 'swap' || !a.return_amount) continue;
+      // the first offer and the last return: the two ends of the trade
+      if (!gave && a.offer_asset && a.offer_amount) gave = { asset: a.offer_asset, raw: a.offer_amount };
+      if (a.ask_asset) got = { asset: a.ask_asset, raw: a.return_amount };
+    }
+  }
+  if (!got) return null;
+  const g = nameOf(got.asset);
+  const out = { got: fmt(amt(got.raw, g.dec)) + ' ' + g.sym };
+  if (gave) {
+    const p = nameOf(gave.asset);
+    out.gave = fmt(amt(gave.raw, p.dec)) + ' ' + p.sym;
+    out.pair = p.sym + ' \u2192 ' + g.sym;
+  }
+  return out;
+}
+
 const VERB = {
   swap: 'Swapped', send: 'Sent', transfer: 'Sent', burn: 'Burned', mint: 'Minted',
   provide_liquidity: 'Added liquidity', withdraw_liquidity: 'Removed liquidity',
@@ -106,11 +176,14 @@ function describe(t, me){
     const swap = intent === 'swap' || intent === 'execute_swap_operations' ||
                  intent === 'swap_operations';
     const verb = VERB[intent];
+    // a truncated contract address tells nobody anything; the pair does
+    const mv = swap ? swapMoves(t) : null;
     return { kind: swap ? 'swap' : 'code',
              // an unknown action is named as it came rather than dressed up
              title: (verb || (intent ? intent.replace(/_/g, ' ') : 'Contract call')) + extra,
-             sub: short(m.contract || ''),
-             value: coins(m.funds) };
+             sub: (mv && mv.pair) || short(m.contract || ''),
+             value: mv ? '+' + mv.got : coins(m.funds),
+             gain: !!mv };
   }
   if (type.indexOf('MsgDelegate') >= 0)
     return { kind: 'stake', title: 'Delegated' + extra, sub: short(m.validator_address),
@@ -249,19 +322,25 @@ async function load(){
     return;
   }
 
+  let day = '';
   list.innerHTML = all.slice(0, 40).map(function (t) {
     // held so the detail panel has the answer without asking the chain again
     TXS[t.txhash] = t;
     const d = describe(t, me);
+    // a heading whenever the date turns over, which is the structure a list of
+    // events has and a flat column of rows hides
+    let head = '';
+    const k = dayKey(t.timestamp);
+    if (k !== day) { day = k; head = '<div class="ac-day">' + dayName(t.timestamp) + '</div>'; }
     const failed = Number(t.code) > 0;
-    return '<div class="ac-row" data-hash="' + t.txhash + '">' +
+    return head + '<div class="ac-row" data-hash="' + t.txhash + '">' +
       '<div class="ac-mark ' + d.kind + (failed ? ' fail' : '') + '">' +
         '<svg viewBox="0 0 24 24">' + (ICON[d.kind] || ICON.dot) + '</svg></div>' +
       '<div class="ac-mid"><div class="ac-t">' + d.title + '</div>' +
         '<div class="ac-s">' + (failed ? '<span class="ac-bad">failed</span> \u00b7 ' : '') +
         (d.sub || short(t.txhash)) + '</div></div>' +
-      '<div class="ac-r"><div class="ac-v' + (d.kind === 'in' ? ' in' : '') + '">' +
-        (d.value || '') + '</div><div class="ac-w">' + ago(t.timestamp) + '</div></div>' +
+      '<div class="ac-r"><div class="ac-v' + (d.kind === 'in' || d.gain ? ' in' : '') + '">' +
+        (d.value || '') + '</div><div class="ac-w">' + clock(t.timestamp) + '</div></div>' +
       '</div>';
   }).join('');
   $('#ac-note').textContent = 'The last ' + Math.min(all.length, 40) +

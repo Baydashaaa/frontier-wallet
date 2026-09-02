@@ -30,17 +30,30 @@ function liftLine(s, header){
   return s.slice(i, s.indexOf(';\n', i) + 1);
 }
 
-const api = new Function('atob', 'short', 'coins', [
+// a small market: two tokens the wallet knows, and one it does not
+const KNOWN = {
+  'cw20:terra1cl8y': { sym: 'CL8Y', dec: 18 },
+  'native:uusd': { sym: 'USTC', dec: 6 }
+};
+
+const api = new Function('atob', 'short', 'coins', 'fmt', 'amt', 'knownAsset', 'DEC', [
+  liftLine(src, 'const keyFor ='),
+  lift(src, 'function nameOf('),
+  lift(src, 'function swapMoves('),
   liftLine(src, 'const VERB ='),
   lift(src, 'function hookOf('),
   lift(src, 'function intentOf('),
   liftLine(src, 'const ICON ='),
   lift(src, 'function describe('),
-  'return { describe, ICON };'
+  'return { describe, ICON, swapMoves, nameOf };'
 ].join('\n'))(
   s => Buffer.from(s, 'base64').toString(),
   x => String(x).slice(0, 6) + '\u2026',
-  c => (c && c[0] ? c[0].amount + ' ' + c[0].denom : '')
+  c => (c && c[0] ? c[0].amount + ' ' + c[0].denom : ''),
+  v => String(Math.round(v * 1e6) / 1e6),
+  (raw, dec) => Number(raw) / Math.pow(10, dec),
+  k => KNOWN[k] || null,
+  {}
 );
 
 const exec = (msg, logs) => ({
@@ -108,4 +121,55 @@ group('several messages are counted, not hidden');
   many.tx.body.messages.push({ '@type': '/cosmos.bank.v1beta1.MsgSend' });
   ok('a transaction with more than one message says so',
      api.describe(many, 'me').title === 'Sent +1', api.describe(many, 'me').title);
+}
+
+group('a swap says what it moved');
+{
+  // the amounts are in the events the pools emit; a row that omits them is
+  // half a sentence, and it was half of every swap on the screen
+  const wasm = (attrs) => ({ type: 'wasm', attributes:
+    Object.keys(attrs).map(k => ({ key: k, value: String(attrs[k]) })) });
+
+  const one = { logs: [{ events: [wasm({
+    action: 'swap', offer_asset: 'terra1cl8y', offer_amount: '8233232000000000000',
+    ask_asset: 'uusd', return_amount: '806730000' })] }] };
+  const m = api.swapMoves(one);
+  ok('the amount received is read', m && m.got === '806.73 USTC', m && m.got);
+  ok('and the amount paid', m && m.gave === '8.233232 CL8Y', m && m.gave);
+  ok('the pair replaces a contract address', m && m.pair === 'CL8Y \u2192 USTC', m && m.pair);
+  ok('each side at its own decimals', m && m.gave.indexOf('8233232') < 0);
+
+  // two pools in one transaction: the first offer and the last return are the
+  // two ends of what the owner did, and the middle token is not either of them
+  const two = { logs: [{ events: [
+    wasm({ action: 'swap', offer_asset: 'terra1cl8y', offer_amount: '1000000000000000000',
+           ask_asset: 'terra1mid', return_amount: '500' }),
+    wasm({ action: 'swap', offer_asset: 'terra1mid', offer_amount: '500',
+           ask_asset: 'uusd', return_amount: '990000' })
+  ] }] };
+  const h = api.swapMoves(two);
+  ok('a two pool trade reports its ends, not its middle',
+     h.gave.indexOf('CL8Y') >= 0 && h.got.indexOf('USTC') >= 0, h.gave + ' -> ' + h.got);
+  ok('and the middle token appears in neither',
+     h.pair.indexOf('terra1mid') < 0, h.pair);
+
+  ok('a transaction with no swap events reports nothing',
+     api.swapMoves({ logs: [] }) === null);
+
+  // and the row has to actually use it, which is the whole point
+  const row = api.describe({
+    tx: { body: { messages: [{ '@type': '/cosmwasm.wasm.v1.MsgExecuteContract',
+                               contract: 'terra1pool', msg: { swap: {} } }] } },
+    logs: [{ events: [wasm({
+      action: 'swap', offer_asset: 'terra1cl8y', offer_amount: '8233232000000000000',
+      ask_asset: 'uusd', return_amount: '806730000' })] }]
+  }, 'me');
+  ok('the row carries the amount received', row.value === '+806.73 USTC', row.value);
+  ok('and the pair instead of the contract', row.sub === 'CL8Y \u2192 USTC', row.sub);
+  ok('and is coloured as a gain', row.gain === true);
+
+  // an asset nobody has heard of still gets a readable name
+  const un = api.nameOf('uwhat');
+  ok('an unknown denom is named from itself', un.sym === 'WHAT', un.sym);
+  ok('and assumed to be six decimals until told otherwise', un.dec === 6);
 }
