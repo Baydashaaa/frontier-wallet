@@ -38,6 +38,9 @@ const KNOWN = {
 
 const api = new Function('atob', 'short', 'coins', 'fmt', 'amt', 'knownAsset', 'DEC', [
   liftLine(src, 'const keyFor ='),
+  lift(src, 'function wasmCalls('),
+  liftLine(src, 'const FACE ='),
+  liftLine(src, 'const sentence ='),
   lift(src, 'function nameOf('),
   lift(src, 'function swapMoves('),
   liftLine(src, 'const VERB ='),
@@ -45,7 +48,7 @@ const api = new Function('atob', 'short', 'coins', 'fmt', 'amt', 'knownAsset', '
   lift(src, 'function intentOf('),
   liftLine(src, 'const ICON ='),
   lift(src, 'function describe('),
-  'return { describe, ICON, swapMoves, nameOf };'
+  'return { describe, ICON, swapMoves, nameOf, wasmCalls };'
 ].join('\n'))(
   s => Buffer.from(s, 'base64').toString(),
   x => String(x).slice(0, 6) + '\u2026',
@@ -87,8 +90,9 @@ group('a transaction is named by what was asked for');
      api.describe(exec({ provide_liquidity: {} }), 'me').title === 'Added liquidity');
 
   const odd = api.describe(exec({ record_entry: {} }), 'me');
+  // shown as it came, but as a sentence: a lower case fragment reads as a leak
   ok('an action nobody has a word for is shown as it came',
-     odd.title === 'record entry', odd.title);
+     odd.title === 'Record entry', odd.title);
   ok('and is not dressed up as something known', odd.kind === 'code', odd.kind);
 }
 
@@ -172,4 +176,58 @@ group('a swap says what it moved');
   const un = api.nameOf('uwhat');
   ok('an unknown denom is named from itself', un.sym === 'WHAT', un.sym);
   ok('and assumed to be six decimals until told otherwise', un.dec === 6);
+}
+
+group('one wasm event, several contracts');
+{
+  /* The chain concatenates every contract's attributes into one event, in the
+     order they ran, separated only by a fresh _contract_address. Reading that
+     as a single object gives the first action in the chain - which for a swap
+     paid in a CW20 is the token's own send, never the pool's swap. */
+  const chained = { logs: [{ events: [{ type: 'wasm', attributes: [
+    { key: '_contract_address', value: 'terra1cl8y' },
+    { key: 'action', value: 'send' },
+    { key: 'from', value: 'me' },
+    { key: '_contract_address', value: 'terra1pool' },
+    { key: 'action', value: 'swap' },
+    { key: 'offer_asset', value: 'terra1cl8y' },
+    { key: 'offer_amount', value: '8233232000000000000' },
+    { key: 'ask_asset', value: 'uusd' },
+    { key: 'return_amount', value: '806730000' }
+  ] }] }] };
+
+  const calls = api.wasmCalls(chained);
+  ok('each contract is read separately', calls.length === 2, String(calls.length));
+  ok("the token's own action does not stand for the pool's",
+     calls[0].action === 'send' && calls[1].action === 'swap');
+
+  const m = api.swapMoves(chained);
+  ok('so the swap behind a cw20 send is found at last', !!m);
+  ok('with the amount that came back', m && m.got === '806.73 USTC', m && m.got);
+  ok('and the pair', m && m.pair === 'CL8Y \u2192 USTC', m && m.pair);
+}
+
+group('a contract call wears the face of what it did');
+{
+  const exec2 = (msg) => ({ tx: { body: { messages: [
+    { '@type': '/cosmwasm.wasm.v1.MsgExecuteContract', contract: 'terra1cl8y', msg } ] } } });
+
+  ok('staking is not filed under "some code ran"',
+     api.describe(exec2({ stake: {} }), 'me').kind === 'stake');
+  ok('nor is unstaking', api.describe(exec2({ unbond: {} }), 'me').kind === 'stake');
+  ok('a reward wears the reward face',
+     api.describe(exec2({ claim_rewards: {} }), 'me').kind === 'gift');
+  ok('and is named in words', api.describe(exec2({ claim_rewards: {} }), 'me').title
+     === 'Claimed rewards');
+  ok('something with no name still starts with a capital',
+     api.describe(exec2({ record_entry: {} }), 'me').title === 'Record entry',
+     api.describe(exec2({ record_entry: {} }), 'me').title);
+  ok('and still admits it is only code',
+     api.describe(exec2({ record_entry: {} }), 'me').kind === 'code');
+
+  // the amount a cw20 carries out of the wallet lives in the message
+  const staked = api.describe(exec2({ send: { contract: 'terra1farm',
+                                              amount: '1500000000000000000' } }), 'me');
+  ok('a cw20 leaving the wallet reports how much',
+     staked.value === '-1.5 CL8Y', staked.value);
 }

@@ -4,10 +4,10 @@
 // решает, что попадёт в выборку. message.sender находит всё, что адрес
 // подписывал - переводы, свапы, стейкинг. Полученное он не видит вовсе, его
 // приходится спрашивать отдельно по получателю, а потом склеивать по хешу.
-import { LCD, amt, fmt, getJSON } from './chain.js?v=fc845698';
-import { DEC, knownAsset } from './market.js?v=fc845698';
-import { $ } from './shell.js?v=fc845698';
-import { S } from './state.js?v=fc845698';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=da345e6a';
+import { DEC, knownAsset } from './market.js?v=da345e6a';
+import { $ } from './shell.js?v=da345e6a';
+import { S } from './state.js?v=da345e6a';
 
 // terra.money's classic finder is gone; the community one is what answers
 const FINDER = 'https://finder.terraclassic.community/columbus-5/tx/';
@@ -91,18 +91,39 @@ function nameOf(a){
            dec: d === undefined ? 6 : d };
 }
 
-function swapMoves(t){
-  let gave = null, got = null;
+/* One wasm event, several contracts.
+
+   The chain concatenates every contract's attributes into a single event of
+   type "wasm", in the order they ran, separated only by a fresh
+   _contract_address. Folding that into one object and reading `action` off it
+   gives the FIRST action in the chain - for a swap paid in a CW20 that is the
+   token's own `send`, never the pool's `swap`. The condition below could not
+   match, which is why every swap row came back empty.
+
+   Split at the boundaries and each contract speaks for itself. */
+function wasmCalls(t){
+  const out = [];
   for (const lg of (t.logs || [])) {
     for (const e of (lg.events || [])) {
       if (e.type !== 'wasm') continue;
-      const a = {};
-      for (const at of (e.attributes || [])) if (!(at.key in a)) a[at.key] = at.value;
-      if (a.action !== 'swap' || !a.return_amount) continue;
-      // the first offer and the last return: the two ends of the trade
-      if (!gave && a.offer_asset && a.offer_amount) gave = { asset: a.offer_asset, raw: a.offer_amount };
-      if (a.ask_asset) got = { asset: a.ask_asset, raw: a.return_amount };
+      let cur = null;
+      for (const at of (e.attributes || [])) {
+        if (at.key === '_contract_address') { cur = { at: at.value }; out.push(cur); continue; }
+        if (!cur) { cur = {}; out.push(cur); }
+        if (!(at.key in cur)) cur[at.key] = at.value;
+      }
     }
+  }
+  return out;
+}
+
+function swapMoves(t){
+  let gave = null, got = null;
+  for (const a of wasmCalls(t)) {
+    if (a.action !== 'swap' || !a.return_amount) continue;
+    // the first offer and the last return: the two ends of the trade
+    if (!gave && a.offer_asset && a.offer_amount) gave = { asset: a.offer_asset, raw: a.offer_amount };
+    if (a.ask_asset) got = { asset: a.ask_asset, raw: a.return_amount };
   }
   if (!got) return null;
   const g = nameOf(got.asset);
@@ -118,10 +139,29 @@ function swapMoves(t){
 const VERB = {
   swap: 'Swapped', send: 'Sent', transfer: 'Sent', burn: 'Burned', mint: 'Minted',
   provide_liquidity: 'Added liquidity', withdraw_liquidity: 'Removed liquidity',
-  increase_allowance: 'Approved spending', claim: 'Claimed', buy: 'Bought',
-  stake: 'Staked', unstake: 'Unstaked', deposit: 'Deposited', withdraw: 'Withdrew',
-  vote: 'Voted', enter: 'Entered', register: 'Registered'
+  increase_allowance: 'Approved spending', buy: 'Bought', sell: 'Sold',
+  claim: 'Claimed', claim_rewards: 'Claimed rewards', withdraw_rewards: 'Claimed rewards',
+  claim_reward: 'Claimed rewards', harvest: 'Claimed rewards',
+  stake: 'Staked', unstake: 'Unstaked', unbond: 'Unstaked', bond: 'Staked',
+  deposit: 'Deposited', withdraw: 'Withdrew', vote: 'Voted', enter: 'Entered',
+  register: 'Registered', mint_nft: 'Minted an NFT', approve: 'Approved'
 };
+
+/* Which face a contract call wears.
+   Only swaps had one, so staking, unstaking and claiming all came out wearing
+   the brackets that mean "some code ran" - true, and useless next to five other
+   rows saying the same. */
+const FACE = {
+  swap: 'swap', execute_swap_operations: 'swap', swap_operations: 'swap',
+  stake: 'stake', bond: 'stake', unstake: 'stake', unbond: 'stake',
+  provide_liquidity: 'stake', withdraw_liquidity: 'stake', deposit: 'stake',
+  claim: 'gift', claim_rewards: 'gift', claim_reward: 'gift',
+  withdraw_rewards: 'gift', harvest: 'gift', mint: 'gift',
+  send: 'out', transfer: 'out', burn: 'out', withdraw: 'in'
+};
+
+// "record entry" reads as a leak; "Record entry" reads as a decision
+const sentence = s => !s ? '' : s.charAt(0).toUpperCase() + s.slice(1);
 
 function hookOf(msg){
   // a cw20 send carries the real intent base64-encoded inside it
@@ -178,11 +218,20 @@ function describe(t, me){
     const verb = VERB[intent];
     // a truncated contract address tells nobody anything; the pair does
     const mv = swap ? swapMoves(t) : null;
-    return { kind: swap ? 'swap' : 'code',
+    // A cw20 leaves the wallet inside the send that carries it, so the amount
+    // is in the message even when no event mentions it - which is every
+    // staking row, all of which had an empty column.
+    let paid = '';
+    if (!mv && m.msg && m.msg.send && m.msg.send.amount) {
+      const p = nameOf(m.contract);
+      paid = '-' + fmt(amt(m.msg.send.amount, p.dec)) + ' ' + p.sym;
+    }
+    return { kind: FACE[intent] || (swap ? 'swap' : 'code'),
              // an unknown action is named as it came rather than dressed up
-             title: (verb || (intent ? intent.replace(/_/g, ' ') : 'Contract call')) + extra,
+             title: (verb || sentence((intent || '').replace(/_/g, ' ')) ||
+                     'Contract call') + extra,
              sub: (mv && mv.pair) || short(m.contract || ''),
-             value: mv ? '+' + mv.got : coins(m.funds),
+             value: mv ? '+' + mv.got : (paid || coins(m.funds)),
              gain: !!mv };
   }
   if (type.indexOf('MsgDelegate') >= 0)
